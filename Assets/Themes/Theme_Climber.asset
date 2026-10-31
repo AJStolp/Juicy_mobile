@@ -1,0 +1,43 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 026fc4e1314b46e99b8a8ef2773ba14e, type: 3}
+  m_Name: Theme_Climber
+  m_EditorClassIdentifier: Assembly-CSharp::ThemeConfig
+  themeName: Climber
+  catalogTheme: 1
+  backgroundSprite: {fileID: 21300000, guid: 0a8572686a5c4dcfb30b31958adc97b2, type: 3}
+  trackModuleSprite: {fileID: 21300000, guid: 0a8572686a5c4dcfb30b31958adc97b2, type: 3}
+  backgroundMaterial: {fileID: 2100000, guid: cddbbf7644894fe9b2826f42f1c4cf31, type: 2}
+  trackMaterial: {fileID: 2100000, guid: cddbbf7644894fe9b2826f42f1c4cf31, type: 2}
+  containerSprite: {fileID: 0}
+  gemAtlasSprite: {fileID: 21300000, guid: 199260e76e0445448a1c3ffb91d435e6, type: 3}
+  targetVaultSprite: {fileID: 21300000, guid: 0a8572686a5c4dcfb30b31958adc97b2, type: 3}
+  plateSprite: {fileID: 21300000, guid: 7c4e1a09b2d64f0a9e5c3b81d6f04217, type: 3}
+  towerCapSprite: {fileID: 21300000, guid: 7706294ba13d4495e02243746195b38a, type: 3}
+  towerTileSprite: {fileID: 21300000, guid: 88173a5cb24e4506f133548572a6c49b, type: 3}
+  towerBaseSprite: {fileID: 21300000, guid: 99284b6dc35f46170244659683b7d5ac, type: 3}
+  towerCapEmission: {fileID: 2800000, guid: aa395c7ed4604728135576a794c8e6bd, type: 3}
+  towerTileEmission: {fileID: 2800000, guid: bb4a6d8fe5714839246687b8a5d9f7ce, type: 3}
+  towerBaseEmission: {fileID: 2800000, guid: cc5b7e90f6824940357798c9b6e0a8df, type: 3}
+  collectibleSprites:
+  - {fileID: 21300000, guid: 199260e76e0445448a1c3ffb91d435e6, type: 3}
+  - {fileID: 21300000, guid: 89e8e1229b2b4e56bdc1a53cb9cd652c, type: 3}
+  - {fileID: 21300000, guid: 89388b3e797a466c8182c83ce95ddd11, type: 3}
+  - {fileID: 21300000, guid: 50408cb51e6146baa29d421b8b3da9b9, type: 3}
+  - {fileID: 21300000, guid: ee1b80e5504a466bbc194ea528421733, type: 3}
+  themeMusic: {fileID: 0}
+  ambientLoop: {fileID: 0}
+  winJingle: {fileID: 0}
+  impactSound: {fileID: 0}
+  primaryNeonColor: {r: 0.78, g: 0.62, b: 0.34, a: 1}
+  emissionColor: {r: 0.22, g: 0.74, b: 0.92, a: 1}
+  bloomIntensityMultiplier: 1
