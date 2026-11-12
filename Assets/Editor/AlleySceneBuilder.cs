@@ -53,7 +53,6 @@ public static class AlleySceneBuilder
         SetupCamera(environment.transform);
 
         GameObject framing = Empty("Alley_Framing", environment.transform, Vector3.zero);
-        BuildPavement(framing.transform);
 
         // Positions come from LayoutAlley below.
         PlaceUniform(Art + "SM_CountdownTimer.fbx", "Vault_Score_Counter", ui.transform, Vector3.zero, 0.42f, 180f);
@@ -363,9 +362,6 @@ public static class AlleySceneBuilder
     const string ArmoredCarModel = Art + "SM_ArmoredRaceCar.fbx";
     const string WallLampModel = Art + "SM_OutdoorWallLamp.fbx";
     const string HangingLampModel = Art + "SM_IndustrialHangingLamp.fbx";
-    const float PavementSmoothness = 0.42f;
-    static readonly Vector3 PavementPosition = new Vector3(0f, -0.04f, 4.8f);
-    static readonly Vector3 PavementScale = new Vector3(7.4f, 0.08f, 17.5f);
 
     [MenuItem("Juicy/Alley/Layout Alley")]
     public static void LayoutAlleyInScene()
@@ -392,7 +388,6 @@ public static class AlleySceneBuilder
         Transform set = Empty("Alley_Set", environment, Vector3.zero).transform;
         GameObject building = PlaceWide(BrickWallModel, "Back_Building", set, new Vector3(0f, 0f, VaultZ + 1.6f), 5.4f, 180f);
         GameObject vault = PlaceWide(Art + "SM_GraffitiVaultDoor.fbx", "Vault_Facade", set, new Vector3(0f, 0f, VaultZ), 3f, 180f);
-        GameObject dumpster;
         // The car runs along its own X with the hood at +X.
         if (WideLens)
         {
@@ -404,7 +399,7 @@ public static class AlleySceneBuilder
                 SideWall("Alley_Wall_Left_" + i, set, new Vector3(-1.95f, 0f, segments[i]), 90f);
                 SideWall("Alley_Wall_Right_" + i, set, new Vector3(1.95f, 0f, segments[i]), -90f);
             }
-            dumpster = PlaceWide(Art + "SM_Dumpster.fbx", "Dumpster", set, new Vector3(-1.2f, 0f, 5.6f), 1.3f, 160f);
+            PlaceWide(Art + "SM_Dumpster.fbx", "Dumpster", set, new Vector3(-1.2f, 0f, 5.6f), 1.3f, 160f);
             PlaceWide(ArmoredCarModel, "Getaway_Car", set, new Vector3(1.15f, 0f, 7.2f), 2f, -115f);
             PlacePipe("Drainpipe_Left", set, new Vector3(-1.85f, 0f, 9.6f), 2.6f);
             PlacePipe("Drainpipe_Right", set, new Vector3(1.85f, 0f, 9.6f), 2.6f);
@@ -416,7 +411,7 @@ public static class AlleySceneBuilder
         {
             PlaceWide(BrickWallModel, "Alley_Wall_Left", set, new Vector3(-1.95f, 0f, 8.4f), 3.6f, 140f);
             PlaceWide(BrickWallModel, "Alley_Wall_Right", set, new Vector3(1.95f, 0f, 8.4f), 3.6f, 220f);
-            dumpster = PlaceWide(Art + "SM_Dumpster.fbx", "Dumpster", set, new Vector3(-1.05f, 0f, 7f), 1.3f, 195f);
+            PlaceWide(Art + "SM_Dumpster.fbx", "Dumpster", set, new Vector3(-1.05f, 0f, 7f), 1.3f, 195f);
             PlaceWide(ArmoredCarModel, "Getaway_Car", set, new Vector3(1.35f, 0f, 7.6f), 1.7f, -22f);
             PlacePipe("Drainpipe_Left", set, new Vector3(-1.75f, 0f, 9.4f), 2.4f);
             PlacePipe("Drainpipe_Right", set, new Vector3(1.75f, 0f, 9.4f), 2.4f);
@@ -429,15 +424,7 @@ public static class AlleySceneBuilder
         PlaceWide(WallLampModel, "Wall_Lamp_Left", set, new Vector3(-1.5f, 2.2f, 4.6f), 0.6f, 0f);
         PlaceWide(WallLampModel, "Wall_Lamp_Right", set, new Vector3(1.5f, 2.2f, 7.6f), 0.6f, 180f);
 
-        GameObject pavement = GameObject.Find("Street_Pavement_Strip");
-        if (pavement != null)
-        {
-            pavement.transform.position = PavementPosition;
-            pavement.transform.localScale = PavementScale;
-            Material wet = pavement.GetComponent<Renderer>().sharedMaterial;
-            wet.SetFloat("_Smoothness", PavementSmoothness);
-            EditorUtility.SetDirty(wet);
-        }
+        BuildRoad(GameObject.Find("Alley_Framing").transform);
 
         Bounds vaultBounds;
         TryBounds(vault, out vaultBounds);
@@ -458,21 +445,144 @@ public static class AlleySceneBuilder
         Vector3 handle = SurfacePoint(vault, new Vector3(vaultBounds.size.x * 0.15f, vaultBounds.min.y + vaultBounds.size.y * 0.375f, vaultBounds.center.z));
         MoveTo("Vault_Padlock", handle + new Vector3(0f, -0.08f, -0.06f));
 
-        Bounds dumpsterBounds;
-        if (TryBounds(dumpster, out dumpsterBounds))
-            SeatOn("Raccoon_Mascot", SurfacePoint(dumpster, new Vector3(dumpsterBounds.center.x, dumpsterBounds.max.y, dumpsterBounds.center.z)));
+        StageRaccoon();
     }
 
-    // Centers the skinned body, not the held torch, over the seat.
-    static void SeatOn(string name, Vector3 seat)
+    // The raccoon stands centered on the manhole cover, facing the camera,
+    // posed on the first frame of his torch idle so the editor shows what play
+    // shows. Height is measured on the skinned body itself, not the torch.
+    const float RaccoonYaw = 180f;
+    const float RaccoonHeight = 0.95f;
+    const float TorchLength = 0.64f;
+
+    static void StageRaccoon()
     {
-        GameObject go = GameObject.Find(name);
-        if (go == null) return;
-        SnapBottom(go, seat);
-        SkinnedMeshRenderer body = go.GetComponentInChildren<SkinnedMeshRenderer>();
-        if (body == null) return;
-        Vector3 center = body.bounds.center;
-        go.transform.position += new Vector3(seat.x - center.x, 0f, seat.z - center.z);
+        GameObject raccoon = GameObject.Find("Raccoon_Mascot");
+        if (raccoon == null) return;
+        Animator animator = raccoon.GetComponentInChildren<Animator>();
+        AnimationClip idle = LoadClip(IdlePath);
+
+        raccoon.transform.rotation = Quaternion.Euler(0f, RaccoonYaw, 0f);
+        raccoon.transform.localScale = Vector3.one;
+        if (idle != null && animator != null) idle.SampleAnimation(animator.gameObject, 0f);
+        Bounds body;
+        if (!BodyBounds(raccoon, out body)) return;
+        raccoon.transform.localScale = Vector3.one * (RaccoonHeight / Mathf.Max(body.size.y, 0.001f));
+        if (idle != null && animator != null) idle.SampleAnimation(animator.gameObject, 0f);
+        BodyBounds(raccoon, out body);
+        Vector3 spot = RaccoonSpot();
+        // Centre on the feet, not the body: the tail and loot sack pull the
+        // body's centre well off his stance.
+        Vector3 stance = body.center;
+        if (animator != null && animator.isHuman)
+        {
+            Transform left = animator.GetBoneTransform(HumanBodyBones.LeftFoot);
+            Transform right = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+            if (left != null && right != null) stance = (left.position + right.position) * 0.5f;
+        }
+        float soleNow = animator != null && animator.isHuman ? SoleHeight(raccoon, animator) : float.NaN;
+        float lowestNow = float.IsNaN(soleNow) ? body.min.y : soleNow;
+        raccoon.transform.position += new Vector3(spot.x - stance.x, spot.y - lowestNow, spot.z - stance.z);
+
+        StandOnSpot stand = raccoon.GetComponent<StandOnSpot>();
+        if (stand == null) stand = raccoon.AddComponent<StandOnSpot>();
+        stand.Configure(animator, raccoon.GetComponentInChildren<SkinnedMeshRenderer>(), spot);
+
+        GripTorch(raccoon);
+    }
+
+    // Centre of the manhole cover's top surface.
+    static Vector3 RaccoonSpot()
+    {
+        // Mesh renderers only: the steam's particle renderer would add height.
+        GameObject manhole = GameObject.Find("Manhole");
+        MeshRenderer[] parts = manhole != null ? manhole.GetComponentsInChildren<MeshRenderer>() : new MeshRenderer[0];
+        if (parts.Length == 0) return new Vector3(ManholeSpot.x, 0f, ManholeSpot.z);
+        Bounds cover = parts[0].bounds;
+        for (int i = 1; i < parts.Length; i++) cover.Encapsulate(parts[i].bounds);
+        return new Vector3(cover.center.x, cover.max.y, cover.center.z);
+    }
+
+    // Lowest point of the vertices mostly skinned to the feet or toes.
+    static float SoleHeight(GameObject root, Animator animator)
+    {
+        SkinnedMeshRenderer skin = root.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (skin == null) return float.NaN;
+        var feet = new HashSet<Transform>();
+        HumanBodyBones[] footBones = { HumanBodyBones.LeftFoot, HumanBodyBones.RightFoot, HumanBodyBones.LeftToes, HumanBodyBones.RightToes };
+        foreach (HumanBodyBones bone in footBones)
+        {
+            Transform t = animator.GetBoneTransform(bone);
+            if (t != null) feet.Add(t);
+        }
+        Transform[] bones = skin.bones;
+        BoneWeight[] weights = skin.sharedMesh.boneWeights;
+        Mesh baked = new Mesh();
+        skin.BakeMesh(baked, true);
+        Vector3[] vertices = baked.vertices;
+        float lowest = float.NaN;
+        for (int i = 0; i < vertices.Length && i < weights.Length; i++)
+        {
+            BoneWeight w = weights[i];
+            float onFeet = 0f;
+            if (feet.Contains(bones[w.boneIndex0])) onFeet += w.weight0;
+            if (feet.Contains(bones[w.boneIndex1])) onFeet += w.weight1;
+            if (feet.Contains(bones[w.boneIndex2])) onFeet += w.weight2;
+            if (feet.Contains(bones[w.boneIndex3])) onFeet += w.weight3;
+            if (onFeet < 0.5f) continue;
+            float y = skin.transform.TransformPoint(vertices[i]).y;
+            if (float.IsNaN(lowest) || y < lowest) lowest = y;
+        }
+        Object.DestroyImmediate(baked);
+        return lowest;
+    }
+
+    // World bounds of the posed skinned mesh. SkinnedMeshRenderer.bounds can
+    // lag a freshly sampled pose in the editor, so the mesh is baked.
+    static bool BodyBounds(GameObject root, out Bounds bounds)
+    {
+        bounds = new Bounds();
+        SkinnedMeshRenderer skin = root.GetComponentInChildren<SkinnedMeshRenderer>();
+        if (skin == null) return false;
+        Mesh baked = new Mesh();
+        skin.BakeMesh(baked, true);
+        Vector3[] vertices = baked.vertices;
+        Matrix4x4 toWorld = skin.transform.localToWorldMatrix;
+        bounds = new Bounds(toWorld.MultiplyPoint3x4(vertices[0]), Vector3.zero);
+        for (int i = 1; i < vertices.Length; i++) bounds.Encapsulate(toWorld.MultiplyPoint3x4(vertices[i]));
+        Object.DestroyImmediate(baked);
+        return true;
+    }
+
+    // Stands the torch upright in the right hand: grip a third of the way up
+    // the handle, flame on top, leaning slightly toward the camera.
+    static void GripTorch(GameObject raccoon)
+    {
+        Transform hand = FindNamed(raccoon.transform, "RightHand");
+        Transform torch = hand != null ? hand.Find("Torch") : null;
+        if (torch == null) return;
+        Light flame = torch.GetComponentInChildren<Light>();
+        if (flame != null) flame.transform.SetParent(null, true);
+
+        torch.rotation = Quaternion.Euler(-8f, RaccoonYaw, 0f);
+        torch.localScale = Vector3.one;
+        Bounds b;
+        TryBounds(torch.gameObject, out b);
+        torch.localScale = Vector3.one * (TorchLength / Mathf.Max(b.size.y, 0.001f) / Mathf.Max(hand.lossyScale.y, 0.0001f));
+        TryBounds(torch.gameObject, out b);
+        Vector3 grip = new Vector3(b.center.x, b.min.y + b.size.y * 0.33f, b.center.z);
+        torch.position += hand.position - grip;
+
+        // The humanoid idle turns the hand differently at runtime than this
+        // editor pose, so TorchGrip holds the torch upright every frame.
+        TorchGrip holder = torch.GetComponent<TorchGrip>();
+        if (holder == null) holder = torch.gameObject.AddComponent<TorchGrip>();
+        holder.Configure(hand, raccoon.transform, torch.InverseTransformPoint(hand.position), -8f);
+
+        if (flame == null) return;
+        TryBounds(torch.gameObject, out b);
+        flame.transform.position = new Vector3(b.center.x, b.max.y + 0.04f, b.center.z);
+        flame.transform.SetParent(torch, true);
     }
 
     static void Face(string name, float yaw)
@@ -713,7 +823,7 @@ public static class AlleySceneBuilder
     {
         Color color = AlleyChuteDirector.GemColor(side);
         string model = side == 0 ? DepositChestCrimson : DepositChestIndigo;
-        RemapDepositChest(model);
+        RemapMaterials(model, DepositChestMaterials());
         GameObject chest = PlaceWide(model, side == 0 ? "Chest_Ruby" : "Chest_Sapphire", parent, bottom, 0.55f, yaw);
         Bounds b;
         TryBounds(chest, out b);
@@ -740,12 +850,12 @@ public static class AlleySceneBuilder
     const string DepositChestCrimson = Art + "SM_DepositChest_Crimson.fbx";
     const string DepositChestIndigo = Art + "SM_DepositChest_Indigo.fbx";
 
-    // The deposit chests are built by ArtSource/Alley/build_deposit_chests.py. Their Blender materials map to
-    // URP ones here. Metals are toned down because the alley has almost no
-    // environment reflection for full metal to pick up.
-    static void RemapDepositChest(string modelPath)
+    // The deposit chests are built by ArtSource/Alley/build_deposit_chests.py.
+    // Their Blender materials map to URP ones here. Metals are toned down
+    // because the alley has almost no environment reflection to pick up.
+    static Dictionary<string, Material> DepositChestMaterials()
     {
-        var materials = new Dictionary<string, Material>
+        return new Dictionary<string, Material>
         {
             { "M_Gunmetal", LitMaterial(MaterialRoot + "/M_ChestGunmetal.mat", "M_ChestGunmetal", new Color(0.2f, 0.21f, 0.24f), 0.6f, 0.65f) },
             { "M_BrushedSteel", LitMaterial(MaterialRoot + "/M_ChestSteel.mat", "M_ChestSteel", new Color(0.5f, 0.52f, 0.55f), 0.55f, 0.55f) },
@@ -755,6 +865,11 @@ public static class AlleySceneBuilder
             { "M_CrimsonGlow", GlowMaterial(MaterialRoot + "/M_ChestCrimsonGlow.mat", "M_ChestCrimsonGlow", AlleyChuteDirector.Ruby) },
             { "M_IndigoGlow", GlowMaterial(MaterialRoot + "/M_ChestIndigoGlow.mat", "M_ChestIndigoGlow", AlleyChuteDirector.Sapphire) },
         };
+    }
+
+    // Points a model's imported materials, by source name, at project materials.
+    static void RemapMaterials(string modelPath, Dictionary<string, Material> materials)
+    {
         ModelImporter importer = (ModelImporter)AssetImporter.GetAtPath(modelPath);
         bool changed = false;
         foreach (var pair in materials)
@@ -861,6 +976,15 @@ public static class AlleySceneBuilder
         WallLampLight("Wall_Lamp_Right", MercuryWhite, new Vector3(0f, 0f, 8.8f));
         EnsureNightSky();
         EnsureMoon();
+        EnsureClouds();
+
+        // Cold distance fog: the far end of the alley sinks into haze while the
+        // play area up front stays clear.
+        RenderSettings.fog = true;
+        RenderSettings.fogMode = FogMode.Linear;
+        RenderSettings.fogColor = new Color(0.035f, 0.045f, 0.08f);
+        RenderSettings.fogStartDistance = 9f;
+        RenderSettings.fogEndDistance = 46f;
         EnsureNightVolume();
 
         Camera camera = Camera.main != null ? Camera.main : Object.FindAnyObjectByType<Camera>();
@@ -1066,6 +1190,57 @@ public static class AlleySceneBuilder
         Renderer renderer = glow.GetComponent<Renderer>();
         renderer.sharedMaterial = BulbMaterial();
         renderer.shadowCastingMode = ShadowCastingMode.Off;
+    }
+
+    // Two drifting cloud layers bracket the moon: a dense bank behind it and
+    // thin wisps in front, plus a soft halo. Textures come from
+    // ArtSource/Alley/build_night_sky.py.
+    static void EnsureClouds()
+    {
+        Transform environment = GameObject.Find("01_Environment_Static").transform;
+        string[] layers = { "Clouds_Far", "Moon_Halo", "Clouds_Near" };
+        for (int i = 0; i < layers.Length; i++)
+        {
+            GameObject old = GameObject.Find(layers[i]);
+            if (old != null) Object.DestroyImmediate(old);
+        }
+
+        const string unlit = "Universal Render Pipeline/Unlit";
+        SkyLayer("Clouds_Far", environment, new Vector3(0f, 7.4f, 15.85f), new Vector2(40f, 7f),
+            TransparentMaterial(MaterialRoot + "/M_CloudsFar.mat", "M_CloudsFar", unlit, SkyTexture("T_AlleyClouds_Far"), new Color(1f, 1f, 1f, 0.95f)), 0.0035f);
+        SkyLayer("Moon_Halo", environment, MoonPosition + new Vector3(0f, 0f, 0.15f), new Vector2(4.6f, 4.6f),
+            TransparentMaterial(MaterialRoot + "/M_MoonHalo.mat", "M_MoonHalo", unlit, SkyTexture("T_AlleyMoonHalo"), new Color(0.7f, 0.78f, 1f, 0.5f)), 0f);
+        SkyLayer("Clouds_Near", environment, new Vector3(0f, 6.7f, 14.85f), new Vector2(40f, 4f),
+            TransparentMaterial(MaterialRoot + "/M_CloudsNear.mat", "M_CloudsNear", unlit, SkyTexture("T_AlleyClouds_Near"), new Color(1f, 1f, 1f, 0.8f)), 0.009f);
+    }
+
+    static Texture2D SkyTexture(string name)
+    {
+        string path = TextureRoot + name + ".png";
+        TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(path);
+        if (importer.wrapModeU != TextureWrapMode.Repeat || importer.wrapModeV != TextureWrapMode.Clamp || !importer.alphaIsTransparency)
+        {
+            importer.wrapModeU = TextureWrapMode.Repeat;
+            importer.wrapModeV = TextureWrapMode.Clamp;
+            importer.alphaIsTransparency = true;
+            importer.SaveAndReimport();
+        }
+        return AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+    }
+
+    static void SkyLayer(string name, Transform parent, Vector3 center, Vector2 size, Material material, float drift)
+    {
+        GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        Object.DestroyImmediate(quad.GetComponent<Collider>());
+        quad.name = name;
+        quad.transform.SetParent(parent, true);
+        quad.transform.position = center;
+        quad.transform.localScale = new Vector3(size.x, size.y, 1f);
+        Renderer renderer = quad.GetComponent<Renderer>();
+        renderer.sharedMaterial = material;
+        renderer.shadowCastingMode = ShadowCastingMode.Off;
+        renderer.receiveShadows = false;
+        if (drift > 0f) quad.AddComponent<CloudDrift>().Configure(drift, 1f);
     }
 
     // Glowing moon above the back building, and a soft cool rim light from
@@ -1415,21 +1590,193 @@ public static class AlleySceneBuilder
             Empty("Drop_0" + (i + 1), top.transform, new Vector3(ColumnX[i], DropY, ColumnZ));
     }
 
-    static void BuildPavement(Transform parent)
+    // The alley floor: textured wet asphalt, concrete curbs with wet gutters
+    // along both walls, worn yellow edge lines, and a steaming manhole. The
+    // textures and the manhole come from ArtSource/Alley/build_alley_road.py.
+    const string AsphaltAlbedo = TextureRoot + "T_AlleyAsphalt_Albedo.png";
+    const string AsphaltNormal = TextureRoot + "T_AlleyAsphalt_Normal.png";
+    const string AsphaltMask = TextureRoot + "T_AlleyAsphalt_Mask.png";
+    const string PaintLineTexture = TextureRoot + "T_AlleyPaintLine.png";
+    const string ManholeModel = Art + "SM_Manhole.fbx";
+    const float RoadWidth = 7.4f;
+    const float RoadStartZ = -3.9f;
+    const float RoadEndZ = 13.6f;
+    const float AsphaltTile = 2.4f;
+    static readonly Vector3 ManholeSpot = new Vector3(0.15f, -0.01f, 3f);
+
+    static void BuildRoad(Transform parent)
     {
-        GameObject ground = GameObject.CreatePrimitive(PrimitiveType.Cube);
-        ground.name = "Street_Pavement_Strip";
-        ground.transform.SetParent(parent, false);
-        ground.transform.position = PavementPosition;
-        ground.transform.localScale = PavementScale;
-        Material material = new Material(Shader.Find("Universal Render Pipeline/Lit"));
-        material.name = "M_AlleyPavement";
-        material.SetColor("_BaseColor", new Color(0.11f, 0.11f, 0.12f));
-        material.SetFloat("_Smoothness", PavementSmoothness);
-        string materialPath = Art + "M_AlleyPavement.mat";
-        if (File.Exists(materialPath)) AssetDatabase.DeleteAsset(materialPath);
-        AssetDatabase.CreateAsset(material, materialPath);
-        ground.GetComponent<Renderer>().sharedMaterial = material;
+        string[] old = { "Street_Pavement_Strip", "Alley_Road" };
+        for (int i = 0; i < old.Length; i++)
+        {
+            GameObject found = GameObject.Find(old[i]);
+            if (found != null) Object.DestroyImmediate(found);
+        }
+        if (File.Exists(Art + "M_AlleyPavement.mat")) AssetDatabase.DeleteAsset(Art + "M_AlleyPavement.mat");
+
+        Transform road = Empty("Alley_Road", parent, Vector3.zero).transform;
+        float length = RoadEndZ - RoadStartZ;
+        float middle = (RoadStartZ + RoadEndZ) * 0.5f;
+
+        Material asphalt = AsphaltMaterial();
+        asphalt.SetTextureScale("_BaseMap", new Vector2(RoadWidth / AsphaltTile, length / AsphaltTile));
+        FlatQuad("Asphalt", road, new Vector3(0f, 0f, middle), new Vector2(RoadWidth, length), asphalt);
+
+        Material curb = LitMaterial(MaterialRoot + "/M_AlleyCurb.mat", "M_AlleyCurb", new Color(0.3f, 0.3f, 0.31f), 0f, 0.22f);
+        Material gutter = LitMaterial(MaterialRoot + "/M_AlleyGutter.mat", "M_AlleyGutter", new Color(0.04f, 0.045f, 0.05f), 0f, 0.88f);
+        Material paint = PaintMaterial();
+        float lineLength = 13f;
+        paint.SetTextureScale("_BaseMap", new Vector2(1f, lineLength / 2.5f));
+        for (int side = -1; side <= 1; side += 2)
+        {
+            GameObject curbBox = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(curbBox.GetComponent<Collider>());
+            curbBox.name = side < 0 ? "Curb_Left" : "Curb_Right";
+            curbBox.transform.SetParent(road, false);
+            curbBox.transform.position = new Vector3(side * 1.8f, 0.05f, middle);
+            curbBox.transform.localScale = new Vector3(0.22f, 0.1f, length);
+            curbBox.GetComponent<Renderer>().sharedMaterial = curb;
+
+            FlatQuad(side < 0 ? "Gutter_Left" : "Gutter_Right", road, new Vector3(side * 1.58f, 0.003f, middle), new Vector2(0.22f, length), gutter);
+            FlatQuad(side < 0 ? "Line_Left" : "Line_Right", road, new Vector3(side * 1.36f, 0.005f, -1.5f + lineLength * 0.5f), new Vector2(0.09f, lineLength), paint);
+        }
+
+        RemapMaterials(ManholeModel, new Dictionary<string, Material>
+        {
+            { "M_CastIron", LitMaterial(MaterialRoot + "/M_ManholeIron.mat", "M_ManholeIron", new Color(0.13f, 0.13f, 0.14f), 0.55f, 0.5f) },
+            { "M_Rust", LitMaterial(MaterialRoot + "/M_ManholeRust.mat", "M_ManholeRust", new Color(0.28f, 0.14f, 0.07f), 0.15f, 0.25f) },
+        });
+        GameObject manhole = PlaceWide(ManholeModel, "Manhole", road, ManholeSpot, 0.9f, 0f);
+        Steam(manhole.transform);
+    }
+
+    static GameObject FlatQuad(string name, Transform parent, Vector3 center, Vector2 size, Material material)
+    {
+        GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        Object.DestroyImmediate(quad.GetComponent<Collider>());
+        quad.name = name;
+        quad.transform.SetParent(parent, false);
+        quad.transform.position = center;
+        // A quad faces -Z; 90 degrees about X turns it face up with its Y along the alley.
+        quad.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
+        quad.transform.localScale = new Vector3(size.x, size.y, 1f);
+        quad.GetComponent<Renderer>().sharedMaterial = material;
+        return quad;
+    }
+
+    static Material AsphaltMaterial()
+    {
+        ImportTexture(AsphaltAlbedo, TextureImporterType.Default, true);
+        ImportTexture(AsphaltNormal, TextureImporterType.NormalMap, false);
+        ImportTexture(AsphaltMask, TextureImporterType.Default, false);
+        Material material = LitMaterial(MaterialRoot + "/M_AlleyAsphalt.mat", "M_AlleyAsphalt", Color.white, 0f, 1f);
+        material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(AsphaltAlbedo));
+        material.SetTexture("_BumpMap", AssetDatabase.LoadAssetAtPath<Texture2D>(AsphaltNormal));
+        material.SetFloat("_BumpScale", 1f);
+        material.EnableKeyword("_NORMALMAP");
+        // Mask alpha is smoothness: puddles and oil read wet, cracks stay dry.
+        material.SetTexture("_MetallicGlossMap", AssetDatabase.LoadAssetAtPath<Texture2D>(AsphaltMask));
+        material.EnableKeyword("_METALLICSPECGLOSSMAP");
+        return material;
+    }
+
+    static Material PaintMaterial()
+    {
+        ImportTexture(PaintLineTexture, TextureImporterType.Default, true);
+        Material material = LitMaterial(MaterialRoot + "/M_AlleyPaintLine.mat", "M_AlleyPaintLine", Color.white, 0f, 0.35f);
+        material.SetTexture("_BaseMap", AssetDatabase.LoadAssetAtPath<Texture2D>(PaintLineTexture));
+        material.SetFloat("_AlphaClip", 1f);
+        material.SetFloat("_Cutoff", 0.45f);
+        material.EnableKeyword("_ALPHATEST_ON");
+        material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.AlphaTest;
+        return material;
+    }
+
+    static void ImportTexture(string path, TextureImporterType type, bool srgb)
+    {
+        TextureImporter importer = (TextureImporter)AssetImporter.GetAtPath(path);
+        if (importer.textureType == type && importer.sRGBTexture == srgb && importer.wrapMode == TextureWrapMode.Repeat) return;
+        importer.textureType = type;
+        importer.sRGBTexture = srgb;
+        importer.wrapMode = TextureWrapMode.Repeat;
+        importer.alphaIsTransparency = srgb;
+        importer.SaveAndReimport();
+    }
+
+    // Soft steam rising from the manhole.
+    static void Steam(Transform manhole)
+    {
+        Bounds b;
+        TryBounds(manhole.gameObject, out b);
+        GameObject steamObject = new GameObject("Steam");
+        steamObject.transform.SetParent(manhole, true);
+        steamObject.transform.position = new Vector3(b.center.x, b.max.y, b.center.z);
+        steamObject.transform.rotation = Quaternion.Euler(-90f, 0f, 0f);
+
+        ParticleSystem steam = steamObject.AddComponent<ParticleSystem>();
+        var main = steam.main;
+        main.loop = true;
+        main.playOnAwake = true;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(2.4f, 3.4f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(0.18f, 0.32f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.5f, 0.85f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.startColor = new Color(0.8f, 0.84f, 0.92f, 0.32f);
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+        main.maxParticles = 60;
+        var emission = steam.emission;
+        emission.rateOverTime = 9f;
+        var shape = steam.shape;
+        // A narrow cone emits along its local Z, which the -90 X rotation points up.
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 10f;
+        shape.radius = 0.2f;
+        var size = steam.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.6f, 1f, 2.2f));
+        var color = steam.colorOverLifetime;
+        color.enabled = true;
+        var fade = new Gradient();
+        fade.SetKeys(new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(Color.white, 1f) },
+                     new[] { new GradientAlphaKey(0f, 0f), new GradientAlphaKey(1f, 0.25f), new GradientAlphaKey(0f, 1f) });
+        color.color = fade;
+        var noise = steam.noise;
+        noise.enabled = true;
+        noise.strength = 0.12f;
+        noise.frequency = 0.6f;
+
+        var renderer = steamObject.GetComponent<ParticleSystemRenderer>();
+        renderer.sharedMaterial = SteamMaterial();
+        renderer.sortingFudge = 10f;
+    }
+
+    static Material SteamMaterial()
+    {
+        return TransparentMaterial(Art + "Materials/M_ManholeSteam.mat", "M_ManholeSteam", "Universal Render Pipeline/Particles/Unlit",
+            AssetDatabase.GetBuiltinExtraResource<Texture2D>("Default-Particle.psd"), Color.white);
+    }
+
+    static Material TransparentMaterial(string path, string name, string shader, Texture texture, Color color)
+    {
+        Material material = AssetDatabase.LoadAssetAtPath<Material>(path);
+        if (material == null)
+        {
+            material = new Material(Shader.Find(shader)) { name = name };
+            AssetDatabase.CreateAsset(material, path);
+        }
+        material.SetTexture("_BaseMap", texture);
+        material.SetColor("_BaseColor", color);
+        material.SetFloat("_Surface", 1f);
+        material.SetFloat("_Blend", 0f);
+        material.SetOverrideTag("RenderType", "Transparent");
+        material.SetFloat("_SrcBlend", (float)UnityEngine.Rendering.BlendMode.SrcAlpha);
+        material.SetFloat("_DstBlend", (float)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+        material.SetFloat("_ZWrite", 0f);
+        material.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+        material.renderQueue = (int)UnityEngine.Rendering.RenderQueue.Transparent;
+        EditorUtility.SetDirty(material);
+        return material;
     }
 
     static void SetupCamera(Transform parent)

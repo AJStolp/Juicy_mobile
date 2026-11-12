@@ -84,9 +84,58 @@ public static class AlleyBotRun
             "heat " + rules.Heat.ToString("0") + " streak " + rules.Streak + " tier " + rules.Tier + "\n" +
             "word " + rules.ActiveWord + " letters " + rules.LettersFilled + "\n" +
             (reactions != null
-                ? "raccoon pushLight " + reactions.PushLights + " pushHeavy " + reactions.PushHeavies + " climbs " + reactions.Climbs + " busts " + reactions.Busts + "\n"
+                ? "raccoon pushLight " + reactions.PushLights + " pushHeavy " + reactions.PushHeavies + " legs " + reactions.Legs + " busts " + reactions.Busts + "\n"
                 : "no reactions\n") +
+            "particles " + ParticleCount() + "\n" +
+            "raccoon " + RaccoonFeet() + "\n" +
             "errors " + errors + (errors > 0 ? " first: " + firstError : "") + "\n";
+    }
+
+    // Lowest point of the posed raccoon mesh and the torch's tilt from upright.
+    static string RaccoonFeet()
+    {
+        GameObject raccoon = GameObject.Find("Raccoon_Mascot");
+        if (raccoon == null) return "missing";
+        var skin = raccoon.GetComponentInChildren<SkinnedMeshRenderer>();
+        var baked = new Mesh();
+        skin.BakeMesh(baked, true);
+        float lowest = float.MaxValue, highest = float.MinValue;
+        foreach (Vector3 v in baked.vertices)
+        {
+            float y = skin.transform.TransformPoint(v).y;
+            lowest = Mathf.Min(lowest, y);
+            highest = Mathf.Max(highest, y);
+        }
+        Object.DestroyImmediate(baked);
+        var torch = raccoon.GetComponentInChildren<TorchGrip>();
+        string tilt = torch != null ? Vector3.Angle(torch.transform.up, Vector3.up).ToString("0") : "none";
+        var animator = raccoon.GetComponentInChildren<Animator>();
+        string bones = "";
+        if (animator != null && animator.isHuman)
+        {
+            Transform l = animator.GetBoneTransform(HumanBodyBones.LeftFoot), r = animator.GetBoneTransform(HumanBodyBones.RightFoot);
+            if (l != null && r != null) bones = " feet bones " + ((l.position + r.position) * 0.5f).ToString("F2");
+            var stand = raccoon.GetComponent<StandOnSpot>();
+            if (stand != null) bones += " ankle " + stand.AnkleHeight.ToString("0.00");
+        }
+        string cover = "";
+        GameObject manhole = GameObject.Find("Manhole");
+        if (manhole != null)
+        {
+            var mr = manhole.GetComponentsInChildren<MeshRenderer>();
+            Bounds mb = mr[0].bounds;
+            foreach (var m in mr) mb.Encapsulate(m.bounds);
+            cover = " cover top " + mb.max.y.ToString("0.00") + " centre " + mb.center.ToString("F2");
+        }
+        return "human " + (animator != null && animator.isHuman) + bones + cover + " feet y " + lowest.ToString("0.00") + " top y " + highest.ToString("0.00") + " torch tilt " + tilt;
+    }
+
+    static string ParticleCount()
+    {
+        var parts = new System.Text.StringBuilder();
+        foreach (var system in Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None))
+            parts.Append(system.name + "=" + system.particleCount + (system.isPlaying ? "" : " (stopped)") + " ");
+        return parts.Length > 0 ? parts.ToString() : "none";
     }
 
     static void Capture(string path)

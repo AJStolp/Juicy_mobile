@@ -1,7 +1,6 @@
-using System.Collections;
 using UnityEngine;
 
-// The alley answers the game: the raccoon pushes and climbs, the police
+// The alley answers the game: the raccoon pushes on sorts and vat fills, the police
 // strobe and vault alarms run hotter with heat, the camera shakes on a bust,
 // and the existing sound hooks play.
 public class AlleyReactions : MonoBehaviour
@@ -19,7 +18,7 @@ public class AlleyReactions : MonoBehaviour
 
     public int PushLights { get; private set; }
     public int PushHeavies { get; private set; }
-    public int Climbs { get; private set; }
+    public int Legs { get; private set; }
     public int Busts { get; private set; }
     public float ShownHeat => shownHeat;
 
@@ -76,19 +75,11 @@ public class AlleyReactions : MonoBehaviour
         PushHeavies++;
     }
 
+    // A leg advance always lands on a vat fill, which already plays the
+    // heavy push; the raccoon stands in the open, so there is nothing to climb.
     void OnLegAdvanced(int leg, int chutes)
     {
-        StartCoroutine(Climb());
-    }
-
-    IEnumerator Climb()
-    {
-        if (raccoon == null) yield break;
-        Climbs++;
-        raccoon.SetBool("isClimbing", true);
-        yield return new WaitForSeconds(1.4f);
-        raccoon.SetBool("isClimbing", false);
-        raccoon.SetTrigger("onClimbDown");
+        Legs++;
     }
 
     void OnCashWon(double amount, double balance)
