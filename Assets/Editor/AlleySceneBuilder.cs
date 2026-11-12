@@ -740,15 +740,16 @@ public static class AlleySceneBuilder
     const string DepositChestCrimson = Art + "SM_DepositChest_Crimson.fbx";
     const string DepositChestIndigo = Art + "SM_DepositChest_Indigo.fbx";
 
-    // The deposit chests come from ArtSource/Heroes/SM_DepositChests.blend
-    // (ArtSource/Alley/export_deposit_chests.py). Their Blender materials map to
+    // The deposit chests are built by ArtSource/Alley/build_deposit_chests.py. Their Blender materials map to
     // URP ones here. Metals are toned down because the alley has almost no
     // environment reflection for full metal to pick up.
     static void RemapDepositChest(string modelPath)
     {
         var materials = new Dictionary<string, Material>
         {
+            { "M_Gunmetal", LitMaterial(MaterialRoot + "/M_ChestGunmetal.mat", "M_ChestGunmetal", new Color(0.2f, 0.21f, 0.24f), 0.6f, 0.65f) },
             { "M_BrushedSteel", LitMaterial(MaterialRoot + "/M_ChestSteel.mat", "M_ChestSteel", new Color(0.5f, 0.52f, 0.55f), 0.55f, 0.55f) },
+            { "M_Chrome", LitMaterial(MaterialRoot + "/M_ChestChrome.mat", "M_ChestChrome", new Color(0.85f, 0.87f, 0.9f), 0.7f, 0.88f) },
             { "M_ChestGold", LitMaterial(MaterialRoot + "/M_ChestGold.mat", "M_ChestGold", new Color(1f, 0.72f, 0.22f), 0.75f, 0.75f) },
             { "M_Keyhole", LitMaterial(MaterialRoot + "/M_ChestKeyhole.mat", "M_ChestKeyhole", new Color(0.01f, 0.012f, 0.014f), 0.6f, 0.5f) },
             { "M_CrimsonGlow", GlowMaterial(MaterialRoot + "/M_ChestCrimsonGlow.mat", "M_ChestCrimsonGlow", AlleyChuteDirector.Ruby) },

@@ -17,8 +17,18 @@ ModelImporter:
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
+      name: M_Chrome
+    second: {fileID: 2100000, guid: 0cf78db84498a4bbca19bde4d5c2bff5, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
       name: M_CrimsonGlow
     second: {fileID: 2100000, guid: 4123ef2b87fa8421592cce2b3c439671, type: 2}
+  - first:
+      type: UnityEngine:Material
+      assembly: UnityEngine.CoreModule
+      name: M_Gunmetal
+    second: {fileID: 2100000, guid: 8fcb5e672bdcf4c04844481b82a2c4e4, type: 2}
   - first:
       type: UnityEngine:Material
       assembly: UnityEngine.CoreModule
