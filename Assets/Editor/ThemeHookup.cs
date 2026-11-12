@@ -21,6 +21,7 @@ public static class ThemeHookup
     static bool applied;
     static bool payoutHandsOff;
     static int waits;
+    static float simAtApply;
 
     static ThemeHookup()
     {
@@ -44,6 +45,7 @@ public static class ThemeHookup
     {
         if (File.Exists(StopFlag))
         {
+            enterQueued = false;
             if (EditorApplication.isPlaying)
             {
                 EditorApplication.ExitPlaymode();
@@ -55,31 +57,37 @@ public static class ThemeHookup
             return;
         }
 
-        if (!WantShot()) return;
+        if (!WantShot())
+        {
+            enterQueued = false;
+            return;
+        }
+
         if (EditorApplication.isPlaying)
         {
             BeginTick();
             return;
         }
 
-        if (EditorApplication.isPlayingOrWillChangePlaymode || enterQueued) return;
-        enterQueued = true;
-        EditorApplication.delayCall += EnterWhenReady;
-    }
-
-    static void EnterWhenReady()
-    {
-        enterQueued = false;
-        if (!WantShot()) return;
+        if (EditorApplication.isPlayingOrWillChangePlaymode) return;
         if (EditorApplication.isCompiling || EditorApplication.isUpdating)
         {
             enterQueued = true;
-            EditorApplication.delayCall += EnterWhenReady;
             return;
         }
 
-        if (EditorApplication.isPlaying || EditorApplication.isPlayingOrWillChangePlaymode) return;
+        // Enter on the second quiet update. A delayCall never fired on a bare
+        // refresh, which left the queued flag stuck and play never started.
+        if (!enterQueued)
+        {
+            enterQueued = true;
+            return;
+        }
+
+        enterQueued = false;
         File.AppendAllText(LogPath, "entering play\n");
+        Application.runInBackground = true;
+        EditorApplication.isPaused = false;
         FocusGameView();
         EditorApplication.EnterPlaymode();
     }
@@ -102,6 +110,12 @@ public static class ThemeHookup
 
     static void Tick()
     {
+        // A console error pause, or the editor losing focus, freezes the sim
+        // on the first frame. The still then shows the rest pose.
+        Application.runInBackground = true;
+        if (EditorApplication.isPaused)
+            EditorApplication.isPaused = false;
+
         if (!EditorApplication.isPlaying)
         {
             ticking = false;
@@ -126,6 +140,7 @@ public static class ThemeHookup
             if (File.Exists(ShowFlag)) Apply(ClimberPath);
             applied = true;
             waits = 0;
+            simAtApply = Time.time;
             string name = GameCoreManager.Instance.ActiveTheme != null
                 ? GameCoreManager.Instance.ActiveTheme.themeName
                 : "none";
@@ -135,6 +150,10 @@ public static class ThemeHookup
 
         if (File.Exists(PayoutFlag) && !File.Exists(ShowFlag) && !File.Exists(HeistFlag))
         {
+            // The payout shot is taken by the ticker. The game view has to be
+            // in front or that capture never lands on disk.
+            if (waits == 30 || waits == 90 || waits == 150) FocusGameView();
+            if (waits < 240) return;
             payoutHandsOff = true;
             ticking = false;
             EditorApplication.update -= Tick;
@@ -142,7 +161,9 @@ public static class ThemeHookup
             return;
         }
 
-        if (waits < 90) return;
+        // Editor ticks can all land inside the first frame. Wait until the
+        // sim itself has moved, or the still is the rest pose every time.
+        if (waits < 30 || Time.time < simAtApply + 0.6f) return;
         ticking = false;
         EditorApplication.update -= Tick;
         string shot = File.Exists(ShowFlag) ? "/tmp/juicy-theme-climber.png" : "/tmp/juicy-theme-heist.png";

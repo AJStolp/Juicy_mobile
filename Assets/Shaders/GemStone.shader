@@ -67,9 +67,10 @@ Shader "Juicy/GemStone"
                 float sky = saturate(reflect(-viewDir, normal).y * 0.5 + 0.5);
                 float3 env = lerp(float3(0.28, 0.12, 0.07), float3(1.0, 0.98, 0.94), sky);
                 color += env * fresnel * lerp(0.7, 0.22, _Metal);
-                color += glint * lerp(0.45, 0.15, _Metal);
-                color += spec * lerp(float3(1.0, 1.0, 1.0), body, _Metal) * lerp(1.7, 1.0, _Metal);
-                color += _EmissionColor.rgb;
+                color += glint * lerp(0.55, 0.22, _Metal);
+                color += spec * lerp(float3(1.0, 1.0, 1.0), body, _Metal) * lerp(2.1, 1.15, _Metal);
+                float inner = pow(facing, 1.7);
+                color += _EmissionColor.rgb * (0.2 + inner * 1.45);
                 return half4(color, 1);
             }
             ENDHLSL

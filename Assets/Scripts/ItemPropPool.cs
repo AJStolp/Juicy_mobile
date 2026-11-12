@@ -19,9 +19,11 @@ public class ItemPropPool : MonoBehaviour
         public Transform Core;
         public MeshRenderer CoreRenderer;
         public bool Alive;
+        public bool Card;
         public string MeshName;
         public SortNode.NodeKind Kind;
         public int ColorId;
+        public BoxCollider Touch;
     }
 
     readonly Prop[] props = new Prop[Pool];
@@ -96,13 +98,13 @@ public class ItemPropPool : MonoBehaviour
         if (node == null) return;
         Ensure();
         Release(node);
-        if (ItemCatalog.HeroSprite(node.Kind, node.ColorId) != null)
+
+        // The overlay canvas paints over the world, so a world card never
+        // reaches the player. The painted sprite is the chute visual.
+        Sprite hero = ItemCatalog.HeroSprite(node.Kind, node.ColorId);
+        if (hero != null && node.Kind != SortNode.NodeKind.Bomb)
         {
             node.HideSprite = false;
-            node.PropSlot = -1;
-            LastMeshName = node.Kind == SortNode.NodeKind.Gold ? "coins_hero" : "gem_hero";
-            if (node.Kind == SortNode.NodeKind.Letter)
-                node.ShowLetter(node.Letter, WordVaultManager.SharedFont);
             return;
         }
 
@@ -110,11 +112,19 @@ public class ItemPropPool : MonoBehaviour
         node.PropSlot = slot;
         if (slot < 0) return;
 
-        Mesh mesh = ItemCatalog.MeshFor(ItemCatalog.Current, node.Kind, node.ColorId);
+        bool card = false;
         Prop prop = props[slot];
+        Mesh mesh = card ? ItemCatalog.CardMesh : ItemCatalog.MeshFor(ItemCatalog.Current, node.Kind, node.ColorId);
+        if (card && !ItemCatalog.PresentCard(prop.Renderer, block, hero, node.Kind, node.ColorId))
+        {
+            card = false;
+            mesh = ItemCatalog.MeshFor(ItemCatalog.Current, node.Kind, node.ColorId);
+        }
+
         prop.Filter.sharedMesh = mesh;
         prop.Alive = true;
-        prop.MeshName = mesh != null ? mesh.name : "";
+        prop.Card = card;
+        prop.MeshName = card ? hero.name : mesh != null ? mesh.name : "";
         prop.Kind = node.Kind;
         prop.ColorId = node.ColorId;
         prop.Go.SetActive(true);
@@ -124,7 +134,8 @@ public class ItemPropPool : MonoBehaviour
         node.HideSprite = true;
         if (node.Kind == SortNode.NodeKind.Letter)
             node.ShowLetter(node.Letter, WordVaultManager.SharedFont);
-        Tint(prop, node.Kind, node.ColorId);
+        if (!card) Tint(prop, node.Kind, node.ColorId);
+        FitTouch(prop);
         Follow(prop, node.Rect);
         if (prop.Sparkle != null)
         {
@@ -193,11 +204,12 @@ public class ItemPropPool : MonoBehaviour
 
     void Follow(Prop prop, RectTransform rect)
     {
-        WorldFollow.Place(prop.Transform, rect);
         float placed = prop.Transform.localScale.y;
-        ItemCatalog.BoostScale(prop.Transform);
-        LastScaleBoost = placed > 0.0001f ? prop.Transform.localScale.y / placed : 0f;
-        ItemCatalog.Spin(prop.Transform);
+        if (prop.Card) WorldFollow.FitCard(prop.Transform, rect);
+        else WorldFollow.Place(prop.Transform, rect);
+        if (!prop.Card) ItemCatalog.BoostScale(prop.Transform);
+        LastScaleBoost = placed > 0.0001f ? prop.Transform.localScale.y / placed : ItemCatalog.ItemPresentationScale;
+        if (!prop.Card) ItemCatalog.Spin(prop.Transform);
         if (prop.Halo != null)
         {
             if (ItemCatalog.ShowHalo(prop.Kind)) ItemCatalog.SeatHalo(prop.Halo, prop.Transform);
@@ -255,6 +267,8 @@ public class ItemPropPool : MonoBehaviour
             renderer.sharedMaterial = material;
             renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.On;
             renderer.receiveShadows = true;
+            var touch = go.AddComponent<BoxCollider>();
+            touch.isTrigger = true;
             var trail = go.AddComponent<TrailRenderer>();
             ConfigureTrail(trail, trailMaterial);
             ParticleSystem sparkle = CasinoDressing.CreateSparkle(go.transform);
@@ -273,12 +287,23 @@ public class ItemPropPool : MonoBehaviour
                 Halo = haloTransform,
                 HaloRenderer = haloRenderer,
                 Core = coreTransform,
-                CoreRenderer = coreRenderer
+                CoreRenderer = coreRenderer,
+                Touch = touch
             };
         }
 
         EnsureLight();
         ready = true;
+    }
+
+    static void FitTouch(Prop prop)
+    {
+        if (prop.Touch == null || prop.Filter == null || prop.Filter.sharedMesh == null) return;
+        Bounds bounds = prop.Filter.sharedMesh.bounds;
+        prop.Touch.center = bounds.center;
+        Vector3 size = bounds.size * ItemCatalog.TouchPadding;
+        size.z = Mathf.Max(size.z, 0.35f);
+        prop.Touch.size = size;
     }
 
     static Transform AddChild(Transform parent, string name, Mesh mesh, Material shared, out MeshRenderer renderer)

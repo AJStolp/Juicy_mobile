@@ -18,6 +18,8 @@ public static class ItemCatalog
     static bool built;
 
     public const float VisualScale = 2.25f;
+    public const float ItemPresentationScale = 1.4f;
+    public const float TouchPadding = 1.3f;
     public const float HdrBoost = 4.2f;
 
     public static readonly Color CrimsonNeon = new Color(1f, 0f, 85f / 255f, 1f);
@@ -30,14 +32,14 @@ public static class ItemCatalog
     static Mesh tire, fuelCan, piton, carabiner, rope, rock;
     static Mesh thief, climber, wall, car, vatShell, liquid, shard;
     static Mesh halo, warningCore, ruby, sapphire, topaz, lootBag, chest, chestLid;
-    static Mesh heroGem, heroCoin;
-    static Material gemStone, coinMetal;
+    static Mesh heroGem, heroCoin, cardMesh;
+    static Material gemStone, coinMetal, heroCard;
     static Sprite[] heroGems;
     static Sprite heroCoinSprite;
 
     public static Material GemStoneMaterial { get { Ensure(); return gemStone; } }
     public static Material CoinMetalMaterial { get { Ensure(); return coinMetal; } }
-    public static readonly Color CoinBody = new Color(0.96f, 0.76f, 0.22f, 1f);
+    public static readonly Color CoinBody = new Color(1f, 0.82f, 0.16f, 1f);
 
     public static Sprite HeroSprite(SortNode.NodeKind kind, int colorId)
     {
@@ -95,6 +97,7 @@ public static class ItemCatalog
     public static Mesh VatMesh { get { Ensure(); return vatShell; } }
     public static Mesh LiquidMesh { get { Ensure(); return liquid; } }
     public static Mesh ShardMesh { get { Ensure(); return shard; } }
+    public static Mesh CardMesh { get { Ensure(); return cardMesh; } }
     public static Mesh HaloMesh { get { Ensure(); return halo; } }
     public static Mesh CoreMesh { get { Ensure(); return warningCore; } }
     public static Mesh BagMesh { get { Ensure(); return lootBag; } }
@@ -153,10 +156,10 @@ public static class ItemCatalog
 
     public static Color GemBody(int colorId)
     {
-        if (colorId == 0) return new Color(0.86f, 0.04f, 0.09f, 1f);
-        if (colorId == 1) return new Color(0.10f, 0.28f, 0.92f, 1f);
-        if (colorId == 2) return new Color(0.95f, 0.32f, 0.06f, 1f);
-        return new Color(0.25f, 0.72f, 0.98f, 1f);
+        if (colorId == 0) return new Color(1f, 0.04f, 0.12f, 1f);
+        if (colorId == 1) return new Color(0.05f, 0.22f, 1f, 1f);
+        if (colorId == 2) return new Color(1f, 0.55f, 0.04f, 1f);
+        return new Color(0.08f, 0.95f, 0.38f, 1f);
     }
 
     public static Color TrailTint(SortNode.NodeKind kind, int colorId)
@@ -206,9 +209,68 @@ public static class ItemCatalog
         block.Clear();
         block.SetColor("_BaseColor", body);
         block.SetColor("_Color", body);
-        block.SetColor("_EmissionColor", body * 0.08f);
+        block.SetColor("_EmissionColor", body * 0.95f);
         block.SetFloat("_Metal", 0f);
         renderer.SetPropertyBlock(block);
+    }
+
+    public static bool PresentCard(Renderer renderer, MaterialPropertyBlock block, Sprite sprite, SortNode.NodeKind kind, int colorId)
+    {
+        Ensure();
+        if (renderer == null || block == null || sprite == null || heroCard == null) return false;
+        Texture2D tex = sprite.texture;
+        if (tex == null) return false;
+        renderer.sharedMaterial = heroCard;
+        Rect tr = sprite.textureRect;
+        float tw = Mathf.Max(1f, tex.width);
+        float th = Mathf.Max(1f, tex.height);
+        Color glow = kind == SortNode.NodeKind.Gold ? new Color(1f, 0.72f, 0.08f, 1f) : GemBody(colorId);
+        block.Clear();
+        block.SetTexture("_BaseMap", tex);
+        block.SetVector("_BaseMap_ST", new Vector4(tr.width / tw, tr.height / th, tr.x / tw, tr.y / th));
+        block.SetColor("_BaseColor", Color.white);
+        block.SetColor("_EmissionColor", glow);
+        block.SetFloat("_Glow", 1.45f);
+        block.SetFloat("_Cutoff", 0.42f);
+        renderer.SetPropertyBlock(block);
+        return true;
+    }
+
+    static Mesh BuildCard()
+    {
+        var mesh = new Mesh();
+        mesh.name = "HeroCard";
+        mesh.vertices = new[]
+        {
+            new Vector3(-0.5f, -0.5f, 0f),
+            new Vector3(0.5f, -0.5f, 0f),
+            new Vector3(0.5f, 0.5f, 0f),
+            new Vector3(-0.5f, 0.5f, 0f)
+        };
+        mesh.uv = new[]
+        {
+            new Vector2(0f, 0f),
+            new Vector2(1f, 0f),
+            new Vector2(1f, 1f),
+            new Vector2(0f, 1f)
+        };
+        mesh.normals = new[] { Vector3.back, Vector3.back, Vector3.back, Vector3.back };
+        mesh.triangles = new[] { 0, 2, 1, 0, 3, 2 };
+        mesh.RecalculateBounds();
+        mesh.hideFlags = HideFlags.HideAndDontSave;
+        return mesh;
+    }
+
+    static Material CreateHeroCard()
+    {
+        Shader shader = Shader.Find("Juicy/HeroCard");
+        if (shader == null) return null;
+        var material = new Material(shader);
+        material.name = "M_HeroCard";
+        material.hideFlags = HideFlags.HideAndDontSave;
+        material.SetFloat("_Cutoff", 0.42f);
+        material.SetFloat("_Glow", 1.45f);
+        return material;
     }
 
     public static void PaintCoin(Renderer renderer, MaterialPropertyBlock block)
@@ -217,7 +279,7 @@ public static class ItemCatalog
         block.Clear();
         block.SetColor("_BaseColor", CoinBody);
         block.SetColor("_Color", CoinBody);
-        block.SetColor("_EmissionColor", CoinBody * 0.06f);
+        block.SetColor("_EmissionColor", new Color(1f, 0.7f, 0.1f, 1f) * 0.85f);
         block.SetFloat("_Metal", 1f);
         renderer.SetPropertyBlock(block);
     }
@@ -235,7 +297,7 @@ public static class ItemCatalog
     public static void BoostScale(Transform target)
     {
         if (target == null) return;
-        target.localScale *= VisualScale;
+        target.localScale *= VisualScale * ItemPresentationScale;
     }
 
     public static void SeatHalo(Transform haloTransform, Transform host)
@@ -373,6 +435,8 @@ public static class ItemCatalog
             Resources.Load<Sprite>("UIHeroes/gem_topaz")
         };
         heroCoinSprite = Resources.Load<Sprite>("UIHeroes/coins_hero");
+        cardMesh = BuildCard();
+        heroCard = CreateHeroCard();
         lootBag = Box("LootBag", Vector3.zero, new Vector3(0.24f, 0.28f, 0.18f));
         chest = Box("TreasureChest", new Vector3(0f, -0.06f, 0f), new Vector3(0.72f, 0.4f, 0.5f));
         chestLid = Box("ChestLid", new Vector3(0f, 0.1f, -0.22f), new Vector3(0.76f, 0.14f, 0.52f));
@@ -842,5 +906,27 @@ public static class WorldFollow
         target.position = UiToWorld(rect);
         float size = SizeFor(rect);
         target.localScale = new Vector3(size, size, size);
+    }
+
+    // Matches a 1x1 card to the rect on screen. Overlay corners are pixels.
+    public static void FitCard(Transform target, RectTransform rect)
+    {
+        if (target == null || rect == null) return;
+        Camera cam = Camera.main;
+        if (cam == null)
+        {
+            Place(target, rect);
+            return;
+        }
+
+        Vector3[] corners = new Vector3[4];
+        rect.GetWorldCorners(corners);
+        float depth = Mathf.Max(0.5f, Mathf.Abs(cam.transform.position.z));
+        Vector3 bl = cam.ScreenToWorldPoint(new Vector3(corners[0].x, corners[0].y, depth));
+        Vector3 tr = cam.ScreenToWorldPoint(new Vector3(corners[2].x, corners[2].y, depth));
+        Vector3 center = (bl + tr) * 0.5f;
+        center.z = -0.15f;
+        target.position = center;
+        target.localScale = new Vector3(Mathf.Max(0.05f, Mathf.Abs(tr.x - bl.x)), Mathf.Max(0.05f, Mathf.Abs(tr.y - bl.y)), 1f);
     }
 }

@@ -546,6 +546,11 @@ public class HeistCombativeManager : MonoBehaviour
         cameraHomeStored = true;
     }
 
+    public void Shake(float seconds)
+    {
+        ShakeCamera(seconds);
+    }
+
     void ShakeCamera(float seconds)
     {
         CacheCameraHome();

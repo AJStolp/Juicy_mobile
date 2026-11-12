@@ -217,7 +217,7 @@ public class SlingModeSpawner : MonoBehaviour
         Camera cam = Camera.main;
         if (cam == null) return null;
         Piece best = null;
-        float bestDistance = 140f;
+        float bestDistance = float.MaxValue;
         for (int i = 0; i < pieces.Length; i++)
         {
             Piece piece = pieces[i];
@@ -225,12 +225,24 @@ public class SlingModeSpawner : MonoBehaviour
             Vector3 projected = cam.WorldToScreenPoint(piece.Body.position);
             if (projected.z < 0f) continue;
             float distance = Vector2.Distance(screen, new Vector2(projected.x, projected.y));
-            if (distance >= bestDistance) continue;
+            float reach = TouchReach(cam, piece);
+            if (distance > reach || distance >= bestDistance) continue;
             bestDistance = distance;
             best = piece;
         }
 
         return best;
+    }
+
+    static float TouchReach(Camera cam, Piece piece)
+    {
+        float floor = 140f * ItemCatalog.ItemPresentationScale * ItemCatalog.TouchPadding;
+        if (cam == null || piece.Renderer == null) return floor;
+        Bounds bounds = piece.Renderer.bounds;
+        Vector3 center = cam.WorldToScreenPoint(bounds.center);
+        Vector3 edge = cam.WorldToScreenPoint(bounds.center + cam.transform.right * bounds.extents.magnitude);
+        float radius = Vector2.Distance(new Vector2(center.x, center.y), new Vector2(edge.x, edge.y));
+        return Mathf.Max(floor, radius * ItemCatalog.TouchPadding);
     }
 
     void TickPieces()
@@ -346,6 +358,14 @@ public class SlingModeSpawner : MonoBehaviour
         {
             MeshFilter filter = piece.Visual.GetComponent<MeshFilter>();
             if (filter != null) filter.sharedMesh = mesh;
+            BoxCollider touch = piece.Visual.GetComponent<BoxCollider>();
+            if (touch != null && mesh != null)
+            {
+                touch.center = mesh.bounds.center;
+                Vector3 size = mesh.bounds.size * ItemCatalog.TouchPadding;
+                size.z = Mathf.Max(size.z, 0.2f);
+                touch.size = size;
+            }
         }
 
         LastMeshName = mesh != null ? mesh.name : "";
@@ -492,7 +512,9 @@ public class SlingModeSpawner : MonoBehaviour
             if (rootRenderer != null) rootRenderer.enabled = false;
             var visual = new GameObject("Visual");
             visual.transform.SetParent(go.transform, false);
-            visual.transform.localScale = Vector3.one * ItemCatalog.VisualScale;
+            visual.transform.localScale = Vector3.one * ItemCatalog.VisualScale * ItemCatalog.ItemPresentationScale;
+            var touch = visual.AddComponent<BoxCollider>();
+            touch.isTrigger = true;
             visual.AddComponent<MeshFilter>();
             var renderer = visual.AddComponent<MeshRenderer>();
             renderer.sharedMaterial = sharedMaterial;

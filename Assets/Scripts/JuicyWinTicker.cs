@@ -35,6 +35,7 @@ public class JuicyWinTicker : MonoBehaviour
     public static bool PayoutOpen { get; private set; }
 
     public double Balance => balance;
+    public RectTransform HudRect => textContainerTransform;
 
     readonly System.Text.StringBuilder stringBuilder = new System.Text.StringBuilder(32);
 
@@ -68,7 +69,7 @@ public class JuicyWinTicker : MonoBehaviour
     {
         if (!File.Exists(PayoutFlag)) return;
         payoutArmed = true;
-        AddWin(70000d);
+        ReachLevelClear();
     }
 
     void OnDestroy()
@@ -100,6 +101,17 @@ public class JuicyWinTicker : MonoBehaviour
 
         textContainerTransform.localScale = originalScale;
         punchRoutine = null;
+    }
+
+    public void ReachLevelClear()
+    {
+        const double target = 71000d;
+        if (PayoutOpen) return;
+        double start = balance;
+        if (balance < target) balance = target;
+        PresentPayout(start);
+        StartRollUp(start, balance);
+        Debug.Log("Level clear " + start.ToString("0") + " to " + balance.ToString("0") + ".");
     }
 
     public void AddWin(double amount)
@@ -189,6 +201,7 @@ public class JuicyWinTicker : MonoBehaviour
     void LockPayout()
     {
         BurstCoins();
+        ExtractionCar.Escape();
         if (payoutArmed)
         {
             payoutArmed = false;

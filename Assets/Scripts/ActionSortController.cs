@@ -1,5 +1,6 @@
 using System.Collections;
 using System.Collections.Generic;
+using System.IO;
 using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -141,6 +142,32 @@ public class ActionSortController : MonoBehaviour
         if (vaultBanner != null) vaultBanner.SetActive(false);
         if (plinkoRoot != null) plinkoRoot.SetActive(false);
         spawnTimer = spawnInterval;
+        if (File.Exists("/tmp/juicy-show-heist"))
+            StartCoroutine(PreviewHeistJuice());
+    }
+
+    // Verification still only. Real play never finds this flag.
+    IEnumerator PreviewHeistJuice()
+    {
+        if (HeatManager.Instance != null)
+        {
+            HeatManager.Instance.ReportError();
+            HeatManager.Instance.ReportError();
+            HeatManager.Instance.ReportError();
+        }
+
+        Debug.Log("Heist preview heat armed.");
+        // The still is taken quickly, so the first line has to be in flight immediately.
+        MoneyTrailManager.PreviewSpan = 1.5f;
+        PayJuice(0);
+        int n = 1;
+        while (File.Exists("/tmp/juicy-show-heist") && n < 14)
+        {
+            yield return new WaitForSeconds(0.18f);
+            if (!File.Exists("/tmp/juicy-show-heist")) break;
+            PayJuice(n % 2);
+            n++;
+        }
     }
 
     void OnDisable()
@@ -247,6 +274,11 @@ public class ActionSortController : MonoBehaviour
             LiquidVatView.Instance.Bind(leftBin, rightBin);
         HeatManager.Ensure();
         StreakMultiplierManager.Ensure();
+        JuicyAudioHooks.Ensure();
+        MoneyTrailManager.Ensure();
+        ExtractionCar.Ensure();
+        VaultHeatEscalation.Ensure();
+        RobberBehaviorController.Ensure();
         LockdownEscapeController.Ensure();
         VaultHeistController.Ensure();
         GameObject lane = GameObject.Find("Lane");
@@ -397,6 +429,7 @@ public class ActionSortController : MonoBehaviour
         if (kind == SortNode.NodeKind.Gold)
         {
             GrantGold();
+            PayJuice(side);
             return;
         }
 
@@ -408,6 +441,7 @@ public class ActionSortController : MonoBehaviour
             NotifyCorrectSort(colorId);
             if (StreakMultiplierManager.Instance != null) StreakMultiplierManager.Instance.ReportSuccess();
             if (HeatManager.Instance != null) HeatManager.Instance.ReportSuccess();
+            PayJuice(side);
             return;
         }
 
@@ -460,6 +494,29 @@ public class ActionSortController : MonoBehaviour
         ThemeConfig theme = GameCoreManager.Instance != null ? GameCoreManager.Instance.ActiveTheme : null;
         TintBin(leftBin, "deposit_chest_crimson", "CRIMSON", theme != null ? theme.leftBinSprite : null);
         TintBin(rightBin, "deposit_chest_indigo", "INDIGO", theme != null ? theme.rightBinSprite : null);
+        PulseBin(leftBin);
+        PulseBin(rightBin);
+        BinMountingArchitecture.Ensure(leftBin, 0);
+        BinMountingArchitecture.Ensure(rightBin, 1);
+    }
+
+    static void PulseBin(JuicyUIPop bin)
+    {
+        if (bin == null) return;
+        Image image = bin.GetComponent<Image>();
+        if (image == null) return;
+        EmissionPulse pulse = bin.GetComponent<EmissionPulse>();
+        if (pulse == null) pulse = bin.gameObject.AddComponent<EmissionPulse>();
+        pulse.BindGraphic(image);
+    }
+
+    void PayJuice(int side)
+    {
+        JuicyAudioHooks.Sort();
+        JuicyUIPop bin = side == 0 ? leftBin : rightBin;
+        RectTransform from = bin != null ? bin.transform as RectTransform : null;
+        MoneyTrailManager.Surge(from);
+        RobberBehaviorController.NotifySort(side);
     }
 
     static Sprite[] chestSprites;
@@ -559,8 +616,9 @@ public class ActionSortController : MonoBehaviour
         if (!pressing || !pointer.press.wasReleasedThisFrame) return;
 
         pressing = false;
-        int direction = FlickDirection(pressStart, pointer.position.ReadValue(), flickDistance);
-        if (direction != 0) FlingFrontNode(direction);
+        float needed = HitsLive(pressStart) ? flickDistance / ItemCatalog.TouchPadding : flickDistance;
+        int direction = FlickDirection(pressStart, pointer.position.ReadValue(), needed);
+        if (direction != 0) FlingFrontNode(direction, pressStart);
     }
 
     void TickSpawn()
@@ -654,10 +712,24 @@ public class ActionSortController : MonoBehaviour
         }
     }
 
-    void FlingFrontNode(int direction)
+    bool HitsLive(Vector2 screen)
+    {
+        for (int i = 0; i < live.Count; i++)
+        {
+            SortNode node = live[i];
+            if (node.Direction != 0) continue;
+            if (node.Hits(screen)) return true;
+        }
+
+        return false;
+    }
+
+    void FlingFrontNode(int direction, Vector2 screen)
     {
         SortNode front = null;
         float lowest = float.MaxValue;
+        SortNode hit = null;
+        float hitY = float.MaxValue;
 
         for (int i = 0; i < live.Count; i++)
         {
@@ -669,9 +741,16 @@ public class ActionSortController : MonoBehaviour
                 lowest = y;
                 front = node;
             }
+
+            if (node.Hits(screen) && y < hitY)
+            {
+                hit = node;
+                hitY = y;
+            }
         }
 
-        if (front != null) front.Fling(direction);
+        SortNode chosen = hit != null ? hit : front;
+        if (chosen != null) chosen.Fling(direction);
     }
 
     void CueVault(bool openDoor, int colorId)
@@ -718,6 +797,7 @@ public class ActionSortController : MonoBehaviour
 
     IEnumerator FireVat(int side)
     {
+        RobberBehaviorController.NotifyMilestone();
         vatLocked[side] = true;
         if (side == 0) leftVat = 1f;
         else rightVat = 1f;
@@ -753,8 +833,7 @@ public class ActionSortController : MonoBehaviour
             bomb = Mathf.Clamp01(alarmTimer / 0.28f) * 0.45f;
         }
 
-        float heat = HeatManager.Instance != null ? HeatManager.Instance.AlarmAlpha : 0f;
-        color.a = Mathf.Max(bomb, heat);
+        color.a = bomb;
         alarmFlash.color = color;
     }
 

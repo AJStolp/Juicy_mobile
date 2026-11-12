@@ -72,7 +72,7 @@ public class SortNode : MonoBehaviour
                 image.preserveAspect = true;
                 image.color = Color.white;
                 image.material = null;
-                if (rect != null) rect.sizeDelta = new Vector2(136f, 136f);
+                if (rect != null) rect.sizeDelta = HeroSize(kind);
             }
             else
             {
@@ -91,6 +91,28 @@ public class SortNode : MonoBehaviour
         gameObject.SetActive(true);
     }
 
+    static Vector2 HeroSize(NodeKind kind)
+    {
+        Vector2 size = kind == NodeKind.Gold ? new Vector2(176f, 156f) : new Vector2(168f, 168f);
+        return size * ItemCatalog.ItemPresentationScale;
+    }
+
+    public bool Hits(Vector2 screen)
+    {
+        if (rect == null) return false;
+        Vector3[] corners = new Vector3[4];
+        rect.GetWorldCorners(corners);
+        float minX = Mathf.Min(corners[0].x, corners[2].x);
+        float maxX = Mathf.Max(corners[0].x, corners[2].x);
+        float minY = Mathf.Min(corners[0].y, corners[2].y);
+        float maxY = Mathf.Max(corners[0].y, corners[2].y);
+        float grow = (ItemCatalog.TouchPadding - 1f) * 0.5f;
+        float padX = (maxX - minX) * grow;
+        float padY = (maxY - minY) * grow;
+        return screen.x >= minX - padX && screen.x <= maxX + padX
+            && screen.y >= minY - padY && screen.y <= maxY + padY;
+    }
+
     public void ApplyCatalogLook()
     {
         Sprite hero = ItemCatalog.HeroSprite(Kind, ColorId);
@@ -103,7 +125,7 @@ public class SortNode : MonoBehaviour
                 image.preserveAspect = true;
                 image.color = Color.white;
                 image.material = null;
-                if (rect != null) rect.sizeDelta = new Vector2(136f, 136f);
+                if (rect != null) rect.sizeDelta = HeroSize(Kind);
             }
             else
             {

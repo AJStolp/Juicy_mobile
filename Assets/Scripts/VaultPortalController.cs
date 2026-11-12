@@ -29,6 +29,7 @@ public class VaultPortalController : MonoBehaviour
     bool indigo;
     float openingTime = -1f;
     const float OpeningBeat = 0.16f;
+    EmissionPulse pulse;
 
     public void Configure(SpriteRenderer renderer, Material material, ThemeConfig theme)
     {
@@ -47,6 +48,9 @@ public class VaultPortalController : MonoBehaviour
         indigo = false;
         openingTime = -1f;
         Show(closedSprite, closedEmission, closedNormal);
+        pulse = GetComponent<EmissionPulse>();
+        if (pulse == null) pulse = gameObject.AddComponent<EmissionPulse>();
+        pulse.Bind(portalMaterial, crimsonGlow);
         SetTargetColor(false);
     }
 
@@ -80,8 +84,10 @@ public class VaultPortalController : MonoBehaviour
     public void SetTargetColor(bool isIndigo)
     {
         indigo = isIndigo;
+        Color glow = isIndigo ? indigoGlow : crimsonGlow;
+        if (pulse != null) pulse.SetBaseColor(glow);
         if (portalMaterial == null) return;
-        portalMaterial.SetColor("_EmissionColor", isIndigo ? indigoGlow : crimsonGlow);
+        portalMaterial.SetColor("_EmissionColor", glow);
     }
 
     void OnVaultCue(bool isOpen, bool isIndigo)
@@ -111,6 +117,7 @@ public class VaultPortalController : MonoBehaviour
         }
 
         Debug.Log(isIndigo ? "vault open indigo" : "vault open crimson");
+        JuicyAudioHooks.Vault();
     }
 
     void Show(Sprite sprite, Texture emission, Texture normalMap)

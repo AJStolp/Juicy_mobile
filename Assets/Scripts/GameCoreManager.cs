@@ -53,6 +53,8 @@ public class GameCoreManager : MonoBehaviour
         currentState = newState;
         Debug.Log($"State changed to: {currentState}");
         OnStateChanged?.Invoke(currentState);
+        if (newState == GameState.Victory && JuicyWinTicker.Instance != null)
+            JuicyWinTicker.Instance.ReachLevelClear();
     }
 
     // Swaps the catalog, the bed, and bloom, then tells the views.
