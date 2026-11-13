@@ -53,7 +53,7 @@ Unity only picks up script changes when its window has focus and refreshes (Cmd+
 
 ## Open for next session
 
-- **Gameplay:** how the loop builds beyond the core slice. Towers, missiles, the Plinko bonus round and the lockdown escape existed in the 2D version and need 3D designs. The win condition and level pacing are not defined in the alley yet.
+- **Gameplay:** the objective, pacing, Plinko and money are settled in `game-design.md`. Next is planning the 3D Plinko and vault progress animations. Towers, missiles and the lockdown escape from the 2D version are not in the design.
 - **Story:** who the raccoon is, why this vault, and how the heist unfolds across legs.
 - **Character animation:** trigger points for the raccoon. He only has torch idle, push light, push heavy, climb and climb down. Walking down the alley needs a walk clip. In some poses his tail tip dips into the manhole cover.
 - **Themes:** the old theme system was 2D sprites and is retired. Swapping heist for the hill climber needs a 3D theme design.
