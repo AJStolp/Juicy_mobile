@@ -74,14 +74,31 @@ $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults <file
 
 ## Open for next session
 
-- **Gameplay:** spending gear during the sort (dynamite clears a chute, smoke slows items, bribe cuts heat, drill turns the vault), post bail during the rollback grind, and the store. Towers, missiles and the lockdown escape from the 2D version are not in the design.
-- **Vault door size:** two sizes are switchable under Juicy > Alley > Vault: set into the painted doorway (the default) or a large door mounted over the facade, which reads better on a phone but covers graffiti. Not decided.
-- **Plinko placement:** a rusty bracket on the left wall overlaps the board's bottom left corner in the Plinko view.
-- **Story:** who the raccoon is, why this vault, and how the heist unfolds across legs.
-- **Character animation:** trigger points for the raccoon. He only has torch idle, push light, push heavy, climb and climb down. The vault crack needs a celebration clip; it uses the heavy push for now. Walking down the alley needs a walk clip. In some poses his tail tip dips into the manhole cover.
-- **Themes:** the old theme system was 2D sprites and is retired. Swapping heist for the hill climber needs a 3D theme design.
-- **Phone check:** nothing has been run on a device yet. Bloom, fog, transparent clouds and steam all cost frame time on mobile.
+Last session ended 2026-11-13. These become tickets once the board is reachable.
+
+**First: connect the Jira board.** It is our own Jira, reached over Tailscale, not Atlassian cloud. Next session needs its address on the tailnet, a personal access token, and the project key. Then file the tickets below and run a workflow on the ones picked.
+
+**Uncommitted work was committed as is on `heist-vault-progress`** (the commit after the frame cap): the word sign, the Plinko payout and drop zone changes, and the unfinished Plinko physics. Tests pass (32).
+
+Tickets to file:
+
+1. **Plinko look.** The board reads as a clean gold pachinko machine and doesn't match the gritty neon alley. Build switchable prototypes; first pick is a street arcade cabinet: weathered steel, pink and cyan neon like the facade, graffiti, marquee bulbs on the pins that flash on hits, `coin_tick.wav` on pin hits.
+2. **Plinko physics: coins walk to the rails.** Cause found: coin radius plus pin radius (0.056) nearly equals half the pin spacing (0.06), so a coin rolling off a pin lands dead on the next one and its leftover drift tips it the same way every row. 200 coin runs (`echo PlinkoSim > /tmp/juicy-batch`, result in `/tmp/juicy-plinko-sim.txt`) put about 60% of coins in the edge slots. Next step: shrink the coin (`COIN_R` in `build_plinko_board.py` and the collider in `AlleySceneBuilder.Heist.cs`) so those distances no longer line up, then retune `pinScatter`, `sideDrag` and `maxSpeed` in `AlleyPlinko`. Target: vault slot a lucky hit (around 10%), edges rare. Remove the trace logging in `AlleyPlinko` once tuned. Payouts already put the lowest cash on the edges and the drop zone is the middle only.
+3. **Missed items need a real failure.** Unswiped gems from the outer chutes fall behind the chests and vanish, so they look sorted ("auto sort"). Make a miss visible: the gem shatters on the street, alarm flash, camera jolt, and nothing hides behind the chests.
+4. **Difficulty.** Gem color is the only real decision today. Proposal (not yet approved): one rule, "real gems go to their color, everything else goes up into the raccoon's sack"; dynamite gets a lit fuse and explodes if it lands; letters and gold go up, not into chests; fake gems with a visual tell; speed and hazard mix ramp each leg.
+5. **Third box.** The suggestion was a third chest for letters. Recommendation: no third chest; the raccoon's sack is the third box via swipe up (see 4). Decide.
+6. **Word sign placement.** Over the vault (recommended) or a rack on the street (cut off at the bottom of the screen). Switch under Juicy > Alley > Word Sign. Pick one and remove the other.
+7. **Vault door size.** Set into the painted doorway (default) or large over the facade (recommended: bolts and rings read on a phone). Switch under Juicy > Alley > Vault. Pick one and remove the other.
+8. **Bonus rounds by gesture (idea).** Each bonus round owns a gesture: drag and release for Plinko, twist for a safe dial, press and hold to drill, rhythm taps to pick a lock.
+9. **Gear and money.** Spending gear during the sort (dynamite clears a chute, smoke slows items, bribe cuts heat, drill turns the vault), post bail during the rollback grind, and the store.
+10. **Raccoon celebration clip** for cracking the vault; it uses the heavy push for now. Also: a walk clip, and his tail tip dips into the manhole cover in some poses.
+11. **Editor heat.** Play mode was uncapped at about 430 fps and 2.3 cores; the 60 fps cap (`FrameRateCap.cs`) brought it to 1.0 to 1.6 cores. Still open: decide whether to remove the prerelease `com.unity.ai.assistant` package (it throws network errors every few seconds and runs a background relay app); editor tips are to hide the Scene view during Play, set the Game view to 1080x1920, and set Interaction Mode to Monitor Refresh Rate. Heavy checks (bot runs, simulations, batch Unity, Blender renders) run one at a time and only when needed. Measure with `echo MeasurePlayCpu > /tmp/juicy-batch`, result in `/tmp/juicy-play-cpu.txt`.
+12. **Phone check** on a real device. Bloom, fog, transparent clouds, steam and the many lights all cost frame time.
+13. **Plinko placement.** A rusty bracket on the left wall overlaps the board's bottom left corner in the Plinko view.
+14. **Story and themes.** Who the raccoon is, why this vault; a 3D theme design for the hill climber.
+
+Running tools in the open editor: write an `AlleyBatch` method name to `/tmp/juicy-batch` (for example `Wire`, `PlinkoSim`, `MeasurePlayCpu`, `SaveCheck`, `WordSignPreviews`). The runner refreshes scripts first and waits out a compile; the result is in `/tmp/juicy-batch.txt`.
 
 ## TLDR
 
-The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bolts pop, rings and wheel turn, busts grind the current stage back, and cracking it opens the door. Every leg ends in a physics Plinko round on a board that swings out of the wall beside the vault. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core (31 tests), and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Next: spending gear, post bail, picking a door size, and a celebration clip for the raccoon.
+The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bolts pop, rings and wheel turn, busts grind the current stage back, and cracking it opens the door. Every leg ends in a physics Plinko round on a board that swings out of the wall beside the vault. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core (32 tests), and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Next session: connect the self hosted Jira board over Tailscale, file the tickets above, then fix the Plinko physics and look, and make missed items fail visibly.
