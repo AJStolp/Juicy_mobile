@@ -13,7 +13,7 @@ using TMPro;
 
 // Builds Assets/Scenes/DiegeticAlley.unity from the textured alley models.
 // SampleScene is not opened and not saved.
-public static class AlleySceneBuilder
+public static partial class AlleySceneBuilder
 {
     const string ScenePath = "Assets/Scenes/DiegeticAlley.unity";
     const string Art = "Assets/Art/Alley/";
@@ -687,7 +687,7 @@ public static class AlleySceneBuilder
         Transform framing = GameObject.Find("Alley_Framing").transform;
         Reparent("Heavy_Crates", framing);
         Reparent("Vault_Padlock", framing);
-        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director" };
+        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko" };
         for (int i = 0; i < retired.Length; i++)
         {
             GameObject old = GameObject.Find(retired[i]);
@@ -715,9 +715,11 @@ public static class AlleySceneBuilder
         var heatLights = new List<LightAnimator>();
         foreach (LightAnimator light in Object.FindObjectsByType<LightAnimator>(FindObjectsSortMode.None))
             if (light.name.StartsWith("Strobe_") || light.name.StartsWith("Alarm_")) heatLights.Add(light);
-        Camera camera = Camera.main;
+        AlleyCameraRig rig = EnsureCameraRig();
         AlleyReactions reactions = directorObject.AddComponent<AlleyReactions>();
-        reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), camera != null ? camera.transform : null);
+        reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), rig);
+        AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig);
+        BuildPlinko(grid, director, vaultDoor, rig);
 
         BuildScoreReadout(director);
         template.gameObject.SetActive(false);

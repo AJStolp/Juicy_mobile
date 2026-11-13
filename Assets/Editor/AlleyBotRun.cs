@@ -1,21 +1,35 @@
+using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
 
 // Verification run for the alley game. Touch /tmp/juicy-alley-bot-run and the
-// open editor enters Play mode with the director on auto play, captures frames
-// at 8, 25 and 50 seconds, writes /tmp/juicy-bot.txt at 60 seconds, then stops.
+// open editor enters Play mode with the director on auto play at 4x speed. It
+// plays until the first vault cracks (or 25 game minutes), captures frames at
+// the big moments, writes /tmp/juicy-bot.txt, then stops. Times in the report
+// are game seconds, so they read as a real player's pace.
 [InitializeOnLoad]
 public static class AlleyBotRun
 {
     const string RunFlag = "/tmp/juicy-alley-bot-run";
     const string AutoPlayFlag = "/tmp/juicy-alley-bot";
     const string Report = "/tmp/juicy-bot.txt";
-    const float Duration = 60f;
-    static readonly float[] Shots = { 8f, 25f, 50f };
+    const string Progress = "/tmp/juicy-bot-progress.txt";
+    const float Speed = 4f;
+    const float MaxGameSeconds = 1500f;
+    const float AfterCrack = 6f;
 
     static int errors;
     static string firstError = "";
+
+    // Play session state. Statics reset on entering Play, so these start clean.
+    static bool hooked;
+    static readonly List<string> events = new List<string>();
+    static readonly List<float> lockTimes = new List<float>();
+    static float crackTime = -1f;
+    static int maxDynamite;
+    static readonly Dictionary<string, float> shots = new Dictionary<string, float>();
+    static float nextProgress;
 
     static AlleyBotRun()
     {
@@ -33,62 +47,127 @@ public static class AlleyBotRun
 
     static void Watch()
     {
+        // Batch runs (AlleyBatch.Bot) quit once the report is written.
+        if (Application.isBatchMode && !EditorApplication.isPlaying && File.Exists(Report) && SessionState.GetBool("JuicyBotBatch", false))
+        {
+            SessionState.SetBool("JuicyBotBatch", false);
+            EditorApplication.Exit(errors > 0 ? 1 : 0);
+            return;
+        }
         if (!EditorApplication.isPlaying)
         {
             if (!File.Exists(RunFlag) || EditorApplication.isCompiling || EditorApplication.isUpdating) return;
             File.Delete(RunFlag);
             File.WriteAllText(AutoPlayFlag, "on");
+            File.WriteAllText(Progress, "entering play " + System.DateTime.Now.ToString("HH:mm:ss") + "\n");
             SessionState.SetBool("JuicyBot", true);
-            SessionState.SetFloat("JuicyBotStart", -1f);
-            SessionState.SetInt("JuicyBotShot", 0);
             EditorApplication.isPlaying = true;
             return;
         }
 
         if (!SessionState.GetBool("JuicyBot", false)) return;
-        float now = (float)EditorApplication.timeSinceStartup;
-        float start = SessionState.GetFloat("JuicyBotStart", -1f);
-        if (start < 0f)
-        {
-            SessionState.SetFloat("JuicyBotStart", now);
-            return;
-        }
-        float elapsed = now - start;
+        var director = Object.FindAnyObjectByType<AlleyChuteDirector>();
+        if (director == null || director.Rules == null) return;
+        if (!hooked) Hook(director);
 
-        int shot = SessionState.GetInt("JuicyBotShot", 0);
-        if (shot < Shots.Length && elapsed >= Shots[shot])
+        float now = Time.time;
+        var plinko = Object.FindAnyObjectByType<AlleyPlinko>();
+        if (now >= nextProgress)
         {
-            Capture("/tmp/juicy-bot-" + shot + ".png");
-            SessionState.SetInt("JuicyBotShot", shot + 1);
+            nextProgress = now + 10f;
+            File.AppendAllText(Progress, System.DateTime.Now.ToString("HH:mm:ss") + " game " + now.ToString("0") + "s stage " + director.Vault.Stage +
+                " turns " + director.Vault.Turns + " leg " + director.Rules.Leg + " plinko " + (plinko != null && plinko.Running) + " errors " + errors + "\n");
+        }
+        maxDynamite = Mathf.Max(maxDynamite, director.Rules.GearCount(GearKind.Dynamite));
+        if (plinko != null && plinko.Running && plinko.CoinsDropped > 0 && !shots.ContainsKey("plinko"))
+        {
+            Shoot("plinko", now, 0.3f);
+            Camera cam = Camera.main;
+            var view = GameObject.Find("Plinko_View");
+            events.Add(now.ToString("0") + "s plinko camera " + cam.transform.position.ToString("F2") + " fov " + cam.fieldOfView.ToString("0") +
+                " view " + (view != null ? view.transform.position.ToString("F2") : "none"));
+        }
+        if (now >= 12f) Shoot("street", now, 0f);
+
+        var due = new List<string>();
+        foreach (var pair in shots)
+            if (pair.Value >= 0f && now >= pair.Value) due.Add(pair.Key);
+        foreach (string name in due)
+        {
+            Capture("/tmp/juicy-bot-" + name + ".png");
+            shots[name] = -1f;
         }
 
-        if (elapsed < Duration) return;
-        File.WriteAllText(Report, Describe(elapsed));
+        bool done = (crackTime >= 0f && now >= crackTime + AfterCrack) || now >= MaxGameSeconds;
+        if (!done) return;
+        File.WriteAllText(Report, Describe(director, plinko, now));
         SessionState.SetBool("JuicyBot", false);
+        Time.timeScale = 1f;
         if (File.Exists(AutoPlayFlag)) File.Delete(AutoPlayFlag);
         EditorApplication.isPlaying = false;
     }
 
-    static string Describe(float elapsed)
+    static void Hook(AlleyChuteDirector director)
     {
-        var director = Object.FindAnyObjectByType<AlleyChuteDirector>();
+        hooked = true;
+        Time.timeScale = Speed;
+        // Sloppier than the default so the run sees busts and rollbacks.
+        director.AutoMistakes = 0.3f;
+        director.Vault.StageLocked += stage =>
+        {
+            lockTimes.Add(Time.time);
+            events.Add(Time.time.ToString("0") + "s stage " + stage + " locked");
+            if (stage == 0) Shoot("bolt", Time.time, 0.35f);
+        };
+        director.Vault.RolledBack += (stage, fraction) => events.Add(Time.time.ToString("0") + "s rollback on stage " + stage + " to " + fraction.ToString("0.00"));
+        director.Vault.Cracked += heist =>
+        {
+            crackTime = Time.time;
+            events.Add(Time.time.ToString("0") + "s vault " + heist + " cracked");
+            Shoot("crack", Time.time, 2.4f);
+        };
+        director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg + ", plinko coins " + director.Rules.LastLegCoins);
+    }
+
+    // Queues a capture once per name, delay seconds from now.
+    static void Shoot(string name, float now, float delay)
+    {
+        if (shots.ContainsKey(name)) return;
+        shots[name] = now + delay;
+    }
+
+    static string Describe(AlleyChuteDirector director, AlleyPlinko plinko, float now)
+    {
         var reactions = Object.FindAnyObjectByType<AlleyReactions>();
-        var display = Object.FindAnyObjectByType<AlleyScoreDisplay>();
-        if (director == null || director.Rules == null) return "no director in the scene\nerrors " + errors + " " + firstError;
+        var door = Object.FindAnyObjectByType<AlleyVaultDoor>();
         HeistSortRules rules = director.Rules;
-        return
-            "seconds " + elapsed.ToString("0") + "\n" +
-            "spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses + "\n" +
-            "balance " + rules.Balance.ToString("0") + " shown " + (display != null ? display.Shown.ToString("0") : "none") + "\n" +
-            "leg " + rules.Leg + " chutes " + rules.Chutes + " vat fills " + rules.VatFills + "\n" +
-            "heat " + rules.Heat.ToString("0") + " streak " + rules.Streak + " tier " + rules.Tier + "\n" +
-            "word " + rules.ActiveWord + " letters " + rules.LettersFilled + "\n" +
-            (reactions != null
-                ? "raccoon pushLight " + reactions.PushLights + " pushHeavy " + reactions.PushHeavies + " legs " + reactions.Legs + " busts " + reactions.Busts + "\n"
-                : "no reactions\n") +
-            "particles " + ParticleCount() + "\n" +
-            "raccoon " + RaccoonFeet() + "\n" +
-            "errors " + errors + (errors > 0 ? " first: " + firstError : "") + "\n";
+        VaultProgress vault = director.Vault;
+        var log = new System.Text.StringBuilder();
+        log.AppendLine("game seconds " + now.ToString("0") + " at " + Speed + "x");
+        log.AppendLine("spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses);
+        log.AppendLine("balance " + rules.Balance.ToString("0") + " leg " + rules.Leg + " vat fills " + rules.VatFills);
+        log.AppendLine("vault heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage);
+        log.AppendLine("vault 1 " + (crackTime >= 0f ? "cracked at " + crackTime.ToString("0") + "s (" + (crackTime / 60f).ToString("0.0") + " min)" : "not cracked"));
+        var gaps = new System.Text.StringBuilder();
+        float last = 0f;
+        foreach (float t in lockTimes) { gaps.Append((t - last).ToString("0") + "s "); last = t; }
+        log.AppendLine("seconds per stage " + gaps);
+        if (door != null) log.AppendLine("door pops " + door.Pops + " rollbacks " + door.Rollbacks + " cracks " + door.Cracks);
+        if (plinko != null)
+        {
+            log.AppendLine("plinko rounds " + plinko.Rounds + " coins " + plinko.CoinsDropped + " vault hits " + plinko.VaultHits +
+                " slots " + string.Join(",", plinko.SlotHits));
+        }
+        log.AppendLine("gear dynamite " + rules.GearCount(GearKind.Dynamite) + " (max held " + maxDynamite + ", cap " + rules.DynamiteCap + ")" +
+            " drill " + rules.GearCount(GearKind.Drill) + " bribe " + rules.GearCount(GearKind.Bribe));
+        if (reactions != null) log.AppendLine("raccoon pushHeavy " + reactions.PushHeavies + " busts " + reactions.Busts);
+        log.AppendLine("particles " + ParticleCount());
+        log.AppendLine("raccoon " + RaccoonFeet());
+        log.AppendLine("saved " + PlayerPrefs.GetString("Juicy.HeistSave.Bot", "none"));
+        log.AppendLine("errors " + errors + (errors > 0 ? " first: " + firstError : ""));
+        log.AppendLine("events:");
+        foreach (string e in events) log.AppendLine("  " + e);
+        return log.ToString();
     }
 
     // Lowest point of the posed raccoon mesh and the torch's tilt from upright.

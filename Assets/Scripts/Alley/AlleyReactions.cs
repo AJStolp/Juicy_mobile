@@ -1,20 +1,19 @@
 using UnityEngine;
 
-// The alley answers the game: the raccoon pushes on sorts and vat fills, the police
-// strobe and vault alarms run hotter with heat, the camera shakes on a bust,
-// and the existing sound hooks play.
+// The alley answers the game: the raccoon pushes on sorts, vat fills and vault
+// stages, the police strobe and vault alarms run hotter with heat, the camera
+// shakes on mistakes and busts, and the existing sound hooks play.
 public class AlleyReactions : MonoBehaviour
 {
     [SerializeField] AlleyChuteDirector director;
     [SerializeField] Animator raccoon;
     [SerializeField] LightAnimator[] heatLights;
-    [SerializeField] Transform shakeTarget;
+    [SerializeField] AlleyCameraRig cameraRig;
     [SerializeField] double bigWinChime = 150d;
 
     HeistSortRules rules;
+    VaultProgress vault;
     float shownHeat;
-    float shake;
-    Vector3 shakeHome;
 
     public int PushLights { get; private set; }
     public int PushHeavies { get; private set; }
@@ -22,12 +21,12 @@ public class AlleyReactions : MonoBehaviour
     public int Busts { get; private set; }
     public float ShownHeat => shownHeat;
 
-    public void Configure(AlleyChuteDirector chute, Animator mascot, LightAnimator[] lights, Transform shaken)
+    public void Configure(AlleyChuteDirector chute, Animator mascot, LightAnimator[] lights, AlleyCameraRig rig)
     {
         director = chute;
         raccoon = mascot;
         heatLights = lights;
-        shakeTarget = shaken;
+        cameraRig = rig;
     }
 
     void Start()
@@ -38,7 +37,9 @@ public class AlleyReactions : MonoBehaviour
         rules.LegAdvanced += OnLegAdvanced;
         rules.CashWon += OnCashWon;
         rules.Busted += OnBusted;
-        if (shakeTarget != null) shakeHome = shakeTarget.localPosition;
+        vault = director.Vault;
+        vault.StageLocked += OnStageLocked;
+        vault.Cracked += OnCracked;
     }
 
     void OnDestroy()
@@ -49,13 +50,16 @@ public class AlleyReactions : MonoBehaviour
         rules.LegAdvanced -= OnLegAdvanced;
         rules.CashWon -= OnCashWon;
         rules.Busted -= OnBusted;
+        if (vault == null) return;
+        vault.StageLocked -= OnStageLocked;
+        vault.Cracked -= OnCracked;
     }
 
     void OnSorted(SortResult result, int side)
     {
         if (result == SortResult.Wrong || result == SortResult.Bomb)
         {
-            shake = Mathf.Max(shake, result == SortResult.Bomb ? 0.35f : 0.15f);
+            Shake(result == SortResult.Bomb ? 0.35f : 0.15f);
             return;
         }
         JuicyAudioHooks.Sort();
@@ -69,6 +73,21 @@ public class AlleyReactions : MonoBehaviour
     void OnVatFilled(int side)
     {
         JuicyAudioHooks.Vault();
+        PushHeavy();
+    }
+
+    // A stage locking on the vault is a big moment; so is cracking it. He
+    // has no celebration clip yet, so both get the heavy push.
+    void OnStageLocked(int stage) => PushHeavy();
+
+    void OnCracked(int heist)
+    {
+        PushHeavy();
+        JuicyAudioHooks.Getaway();
+    }
+
+    void PushHeavy()
+    {
         if (raccoon == null) return;
         raccoon.ResetTrigger("onPushLight");
         raccoon.SetTrigger("onPushHeavy");
@@ -90,7 +109,12 @@ public class AlleyReactions : MonoBehaviour
     void OnBusted()
     {
         Busts++;
-        shake = 0.6f;
+        Shake(0.6f);
+    }
+
+    void Shake(float amount)
+    {
+        if (cameraRig != null) cameraRig.Shake(amount);
     }
 
     void Update()
@@ -101,13 +125,5 @@ public class AlleyReactions : MonoBehaviour
         {
             if (heatLights[i] != null) heatLights[i].SetDrive(1f + shownHeat * 2.5f, 0.3f + shownHeat * 1.5f);
         }
-    }
-
-    void LateUpdate()
-    {
-        if (shakeTarget == null) return;
-        shake = Mathf.MoveTowards(shake, 0f, Time.deltaTime * 1.4f);
-        Vector3 offset = shake > 0f ? Random.insideUnitSphere * (shake * shake * 0.12f) : Vector3.zero;
-        shakeTarget.localPosition = shakeHome + offset;
     }
 }

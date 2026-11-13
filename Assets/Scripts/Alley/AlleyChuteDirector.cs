@@ -4,7 +4,8 @@ using UnityEngine.InputSystem;
 
 // Runs the heist sort in the alley. Items fall from the open chutes; the
 // player swipes left or right to send one into that side's color chest, or up
-// to trash it. HeistSortRules decides what each outcome is worth.
+// to trash it. HeistSortRules decides what each outcome is worth, and every
+// vat fill turns the vault. Vault, cash and gear are saved between sittings.
 public class AlleyChuteDirector : MonoBehaviour
 {
     // Chutes open centre first: Drop_02, Drop_03, Drop_01, then Drop_04.
@@ -37,7 +38,28 @@ public class AlleyChuteDirector : MonoBehaviour
     bool pressing;
     Vector2 pressStart;
 
+    const string SaveKey = "Juicy.HeistSave";
+    const string BotSaveKey = "Juicy.HeistSave.Bot";
+    const int TurnsPerVatFill = 1;
+
+    bool paused;
+    bool clearQueued;
+
     public HeistSortRules Rules { get; private set; }
+    public VaultProgress Vault { get; private set; }
+    public bool AutoPlay => autoPlay;
+    public float AutoMistakes { get => autoMistakes; set => autoMistakes = Mathf.Clamp01(value); }
+
+    // Paused for a bonus round: the street clears and nothing falls.
+    public bool Paused
+    {
+        get => paused;
+        set
+        {
+            if (value && !paused) ClearLive();
+            paused = value;
+        }
+    }
     public int Spawned { get; private set; }
     public int Flicks { get; private set; }
     public int Misses { get; private set; }
@@ -54,7 +76,10 @@ public class AlleyChuteDirector : MonoBehaviour
     void Awake()
     {
         Rules = new HeistSortRules();
+        Vault = new VaultProgress();
         Rules.Busted += ClearLive;
+        Rules.Busted += Vault.Bust;
+        Rules.VatFilled += _ => Vault.Turn(TurnsPerVatFill);
         view = Camera.main;
         itemTemplate.gameObject.SetActive(false);
         for (int i = 0; i < poolSize; i++)
@@ -68,16 +93,46 @@ public class AlleyChuteDirector : MonoBehaviour
 #if UNITY_EDITOR
         if (System.IO.File.Exists("/tmp/juicy-alley-bot")) autoPlay = true;
 #endif
+        // Bot runs keep their own save and start each run fresh.
+        if (autoPlay) PlayerPrefs.DeleteKey(BotSaveKey);
+        HeistSave saved = HeistSave.FromJson(PlayerPrefs.GetString(CurrentSaveKey, ""));
+        if (saved != null) saved.Apply(Vault, Rules);
+        Vault.Turned += (_, __) => SaveNow();
+        Vault.StageLocked += _ => SaveNow();
+        Vault.RolledBack += (_, __) => SaveNow();
+        Vault.Cracked += _ => SaveNow();
+        Rules.GearChanged += (_, __) => SaveNow();
+    }
+
+    string CurrentSaveKey => autoPlay ? BotSaveKey : SaveKey;
+
+    public void SaveNow()
+    {
+        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules).ToJson());
+        PlayerPrefs.Save();
+    }
+
+    void OnApplicationPause(bool pausing)
+    {
+        if (pausing && Rules != null) SaveNow();
+    }
+
+    void OnApplicationQuit()
+    {
+        if (Rules != null) SaveNow();
     }
 
     void Update()
     {
         float dt = Time.deltaTime;
+        FlushClear();
+        if (paused) return;
         Rules.Tick(dt);
         TickSpawn(dt);
         TickInput();
         if (autoPlay) TickBot();
         TickItems(dt);
+        FlushClear();
     }
 
     void TickSpawn(float dt)
@@ -195,11 +250,20 @@ public class AlleyChuteDirector : MonoBehaviour
         idle.Enqueue(item);
     }
 
-    // A bust clears everything still in the air.
+    // A bust or a bonus round clears everything still in the air. Both can
+    // fire from inside TickItems' loop over live items, so the clear waits
+    // until that loop is done.
     void ClearLive()
     {
-        for (int i = live.Count - 1; i >= 0; i--) Recycle(i);
+        clearQueued = true;
         spawnTimer = -1f;
+    }
+
+    void FlushClear()
+    {
+        if (!clearQueued) return;
+        clearQueued = false;
+        for (int i = live.Count - 1; i >= 0; i--) Recycle(i);
     }
 
     // Plays for verification: sorts most items correctly, trashes bombs,

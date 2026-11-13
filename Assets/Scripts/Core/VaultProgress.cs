@@ -12,7 +12,7 @@ public class VaultProgress
 
     // Turns per stage for heist 1, 2, 3...; the last entry holds from then on.
     // The first vault opens in one sitting; later ones grow.
-    public int[] TurnsByHeist = { 3, 6, 10 };
+    public int[] TurnsByHeist = { 9, 16, 28 };
     [Range(0f, 1f)] public float RollbackFraction = 0.5f;
 
     public event Action<int, float> Turned;
