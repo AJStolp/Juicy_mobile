@@ -687,7 +687,7 @@ public static partial class AlleySceneBuilder
         Transform framing = GameObject.Find("Alley_Framing").transform;
         Reparent("Heavy_Crates", framing);
         Reparent("Vault_Padlock", framing);
-        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko" };
+        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign" };
         for (int i = 0; i < retired.Length; i++)
         {
             GameObject old = GameObject.Find(retired[i]);
@@ -720,6 +720,7 @@ public static partial class AlleySceneBuilder
         reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), rig);
         AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig);
         BuildPlinko(grid, director, vaultDoor, rig);
+        BuildWordSign(grid, director);
 
         BuildScoreReadout(director);
         template.gameObject.SetActive(false);

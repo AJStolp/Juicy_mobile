@@ -12,7 +12,9 @@ public struct PlinkoReward
 
 // What each Plinko slot pays, left to right. Physics decides where a coin
 // lands; this only pays it out. Cash in most slots, gear in two, and one
-// narrow vault slot in the middle that turns the door a big step.
+// narrow vault slot in the middle that turns the door a big step. The board's
+// side rails make a straight lane down each edge, so the edge slots pay the
+// least and the big cash sits one slot in, reachable only by a lucky bounce.
 public static class PlinkoPayout
 {
     public const double BaseCash = 100d;
@@ -22,9 +24,9 @@ public static class PlinkoPayout
 
     static readonly PlinkoReward[] Slots =
     {
-        Cash(10), Gear(GearKind.Drill), Cash(2), Cash(1),
+        Cash(1), Cash(10), Gear(GearKind.Bribe), Cash(2),
         new PlinkoReward { Prize = PlinkoPrize.Vault, Turns = VaultTurns },
-        Cash(1), Cash(2), Gear(GearKind.Bribe), Cash(10),
+        Cash(2), Gear(GearKind.Drill), Cash(10), Cash(1),
     };
 
     public static int SlotCount => Slots.Length;

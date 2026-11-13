@@ -30,6 +30,88 @@ public static partial class AlleySceneBuilder
 
     public static void Capture(string path) { CaptureAlley(path); }
 
+    // Two places for the word sign, switchable to compare: over the vault on
+    // the balcony, or a rack on the street between the chests, near the thumb.
+    const string WordSignStreetPref = "Juicy.Alley.WordSignStreet";
+    static bool WordSignStreet { get { return EditorPrefs.GetBool(WordSignStreetPref, false); } }
+
+    [MenuItem("Juicy/Alley/Word Sign/Over The Vault")]
+    static void UseVaultWordSign() { EditorPrefs.SetBool(WordSignStreetPref, false); WireGameplayInScene(); }
+    [MenuItem("Juicy/Alley/Word Sign/On The Street")]
+    static void UseStreetWordSign() { EditorPrefs.SetBool(WordSignStreetPref, true); WireGameplayInScene(); }
+
+    public static void SetWordSignStreet(bool street) { EditorPrefs.SetBool(WordSignStreetPref, street); }
+
+    const int WordSignSlots = 6;
+
+    static AlleyWordSign BuildWordSign(Transform parent, AlleyChuteDirector director)
+    {
+        Vector3 position;
+        Vector3 facing;
+        float tile;
+        Camera camera = Camera.main;
+        if (WordSignStreet)
+        {
+            // In front of the chests, tipped back to face the camera.
+            position = new Vector3(0f, 0.12f, -1.15f);
+            tile = 0.15f;
+            facing = position - camera.transform.position;
+        }
+        else
+        {
+            GameObject facade = GameObject.Find("Vault_Facade");
+            Bounds fb;
+            TryBounds(facade, out fb);
+            // On the balcony railing above the vault door.
+            position = new Vector3(fb.center.x, fb.max.y - 0.5f, fb.min.z - 0.06f);
+            tile = 0.3f;
+            facing = Vector3.forward;
+        }
+
+        GameObject root = Empty("Word_Sign", parent, position);
+        // Text reads from behind its +Z, so +Z points away from the camera.
+        root.transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
+        Material material = LitMaterial(MaterialRoot + "/M_WordTile.mat", "M_WordTile", Color.white, 0.4f, 0.6f);
+        material.EnableKeyword("_EMISSION");
+        material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+        EditorUtility.SetDirty(material);
+
+        var tiles = new Renderer[WordSignSlots];
+        var glyphs = new TextMeshPro[WordSignSlots];
+        float step = tile * 1.18f;
+        for (int i = 0; i < WordSignSlots; i++)
+        {
+            GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(cube.GetComponent<Collider>());
+            cube.name = "Tile_" + i;
+            cube.transform.SetParent(root.transform, false);
+            cube.transform.localPosition = new Vector3((i - (WordSignSlots - 1) * 0.5f) * step, 0f, 0f);
+            cube.transform.localScale = new Vector3(tile, tile, tile * 0.25f);
+            Renderer renderer = cube.GetComponent<Renderer>();
+            renderer.sharedMaterial = material;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+
+            GameObject glyph = new GameObject("Glyph");
+            glyph.transform.SetParent(cube.transform, false);
+            glyph.transform.localPosition = new Vector3(0f, 0f, -0.55f);
+            TextMeshPro text = glyph.AddComponent<TextMeshPro>();
+            text.rectTransform.sizeDelta = new Vector2(0.9f, 0.9f);
+            text.enableAutoSizing = true;
+            text.fontSizeMin = 0.5f;
+            text.fontSizeMax = 12f;
+            text.fontStyle = FontStyles.Bold;
+            text.alignment = TextAlignmentOptions.Center;
+            text.text = "H";
+            tiles[i] = renderer;
+            glyphs[i] = text;
+        }
+
+        AlleyWordSign sign = root.AddComponent<AlleyWordSign>();
+        sign.Configure(director, tiles, glyphs);
+        sign.Show("HEIST", _ => false);
+        return sign;
+    }
+
     static AlleyCameraRig EnsureCameraRig()
     {
         Camera camera = Camera.main != null ? Camera.main : Object.FindAnyObjectByType<Camera>();
@@ -133,7 +215,7 @@ public static partial class AlleySceneBuilder
             bounce = new PhysicsMaterial("PM_PlinkoCoin");
             AssetDatabase.CreateAsset(bounce, CoinPhysicsPath);
         }
-        bounce.bounciness = 0.45f;
+        bounce.bounciness = 0.2f;
         bounce.dynamicFriction = 0.05f;
         bounce.staticFriction = 0.05f;
         bounce.bounceCombine = PhysicsMaterialCombine.Maximum;
@@ -164,8 +246,9 @@ public static partial class AlleySceneBuilder
         coinObject.transform.position = new Vector3(0f, -10f, 0f);
         SphereCollider coinCollider = coinObject.AddComponent<SphereCollider>();
         coinCollider.center = Vector3.zero;
-        coinCollider.radius = 0.04f;
+        coinCollider.radius = 0.032f;
         coinCollider.sharedMaterial = bounce;
+        coinObject.AddComponent<AlleyPlinkoCoin>();
         Rigidbody coin = coinObject.AddComponent<Rigidbody>();
         coin.mass = 0.02f;
         coin.useGravity = false;

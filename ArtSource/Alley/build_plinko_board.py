@@ -11,8 +11,8 @@
 #   Rail_L, Rail_R   the side walls; get box colliders
 #   Floor            the slot floor; gets a box collider
 #   VaultSlot        the glowing floor of the middle slot
-# The layout numbers below are mirrored in AlleyPlinko (SlotWidth, FloorZ,
-# DropZ); change both together.
+# The layout numbers below are mirrored in AlleyPlinko (SlotWidth, DropHeight,
+# SlotTop, AimHalfWidth); change both together.
 # Material names are fixed; AlleySceneBuilder remaps them to URP:
 #   M_PlinkoBack, M_PlinkoBrass, M_PlinkoPin, M_PlinkoCoin, M_PlinkoVaultGlow
 import bpy, math, os, sys
@@ -32,10 +32,11 @@ PIN_TOP = 1.32
 PIN_ROWS = 8
 ROW_GAP = 0.11
 DROP_Z = 1.48              # the aim rail, where coins are released
+AIM_HALF = 0.3             # coins drop only from the middle of the rail
 H = 1.62
 DEPTH = 0.08               # how far pins and walls stand off the back
 PIN_R = 0.013
-COIN_R = 0.04
+COIN_R = 0.032             # coin radius plus pin radius must stay clear of half the pin spacing (0.06), or a coin lands dead on the next pin and walks to a rail
 
 
 def material(name, color, metal, rough, emit=None, strength=3.0):
@@ -101,7 +102,10 @@ def build_board():
     shell = [box("back", back, (W, 0.04, H), (0, 0.02, H / 2), bevel=0.02)]
     # Brass trim: top arch bar, rivets along the frame.
     shell.append(box("top", brass, (W, DEPTH + 0.02, 0.08), (0, -DEPTH / 2, H - 0.04), bevel=0.02))
-    shell.append(box("aim_rail", pin, (INNER_W, 0.02, 0.018), (0, -DEPTH - 0.01, DROP_Z + 0.06), bevel=0.006))
+    # The aim rail spans only the drop zone, with stops at each end.
+    shell.append(box("aim_rail", pin, (2 * AIM_HALF + 2 * COIN_R, 0.02, 0.018), (0, -DEPTH - 0.01, DROP_Z + 0.06), bevel=0.006))
+    for x in (-AIM_HALF - COIN_R, AIM_HALF + COIN_R):
+        shell.append(box("aim_stop", brass, (0.02, 0.04, 0.09), (x, -DEPTH - 0.01, DROP_Z + 0.04), bevel=0.006))
     for i in range(12):
         z = 0.15 + i * (H - 0.3) / 11
         for x in (-W / 2 + 0.04, W / 2 - 0.04):
@@ -127,9 +131,11 @@ def build_board():
         offset = (count - 1) / 2
         for n in range(count):
             x = (n - offset) * SLOT_W
-            # Edge pins on even rows would sit inside the rails; skip them.
-            if abs(x) > INNER_W / 2 - 0.03:
-                continue
+            # Edge pins on even rows would leave a gap to the rail narrower
+            # than a coin, where coins wedge. Push them against the rail so
+            # they deflect inward instead.
+            if abs(x) > INNER_W / 2 - 0.1:
+                x = math.copysign(INNER_W / 2 - PIN_R, x)
             p = cyl("Pin_%d_%d" % (r, n), pin, PIN_R, DEPTH, (x, -DEPTH / 2, z), 16)
             head = cyl("head", brass, PIN_R * 1.8, 0.01, (x, -DEPTH - 0.004, z), 16)
             p = join([p, head], "Pin_%d_%d" % (r, n))

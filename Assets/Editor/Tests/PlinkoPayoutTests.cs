@@ -35,6 +35,18 @@ public class PlinkoPayoutTests
     }
 
     [Test]
+    public void EdgeSlotsPayTheLeastSinceTheRailsMakeAStraightLane()
+    {
+        double edge = PlinkoPayout.For(0).Cash;
+        Assert.AreEqual(edge, PlinkoPayout.For(PlinkoPayout.SlotCount - 1).Cash);
+        for (int slot = 1; slot < PlinkoPayout.SlotCount - 1; slot++)
+        {
+            PlinkoReward reward = PlinkoPayout.For(slot);
+            if (reward.Prize == PlinkoPrize.Cash) Assert.Greater(reward.Cash, edge, "slot " + slot);
+        }
+    }
+
+    [Test]
     public void CoinsRunFromOneToFour()
     {
         Assert.AreEqual(1, PlinkoPayout.CoinsFor(0));

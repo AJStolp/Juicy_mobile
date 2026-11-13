@@ -155,7 +155,7 @@ public static class AlleyBotRun
         if (door != null) log.AppendLine("door pops " + door.Pops + " rollbacks " + door.Rollbacks + " cracks " + door.Cracks);
         if (plinko != null)
         {
-            log.AppendLine("plinko rounds " + plinko.Rounds + " coins " + plinko.CoinsDropped + " vault hits " + plinko.VaultHits +
+            log.AppendLine("plinko rounds " + plinko.Rounds + " coins " + plinko.CoinsDropped + " vault hits " + plinko.VaultHits + " jostles " + plinko.Jostles +
                 " slots " + string.Join(",", plinko.SlotHits));
         }
         log.AppendLine("gear dynamite " + rules.GearCount(GearKind.Dynamite) + " (max held " + maxDynamite + ", cap " + rules.DynamiteCap + ")" +
