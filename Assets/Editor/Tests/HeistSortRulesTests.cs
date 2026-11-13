@@ -95,6 +95,54 @@ public class HeistSortRulesTests
     }
 
     [Test]
+    public void TrashedDynamiteIsPocketedUpToTheCap()
+    {
+        var rules = new HeistSortRules();
+        int changes = 0;
+        rules.GearChanged += (_, __) => changes++;
+        for (int i = 0; i < rules.DynamiteCap + 2; i++) rules.Trash(ItemKind.Bomb);
+        Assert.AreEqual(rules.DynamiteCap, rules.GearCount(GearKind.Dynamite));
+        Assert.AreEqual(rules.DynamiteCap, changes);
+        rules.Miss(ItemKind.Bomb);
+        rules.Catch(ItemKind.Bomb, 0, 0);
+        Assert.AreEqual(rules.DynamiteCap, rules.GearCount(GearKind.Dynamite));
+    }
+
+    [Test]
+    public void LegCoinsCountTheBestTierReachedThatLeg()
+    {
+        var rules = new HeistSortRules();
+        rules.CorrectsToFillVat = 5;
+        rules.VatFillsPerLeg = 2;
+        SortCorrect(rules, 0, 5);
+        rules.Catch(ItemKind.Gem, 1, 0);
+        SortCorrect(rules, 0, 5);
+        Assert.AreEqual(2, rules.Leg);
+        Assert.AreEqual(2, rules.LastLegCoins);
+
+        var calm = new HeistSortRules();
+        calm.CorrectsToFillVat = 2;
+        calm.VatFillsPerLeg = 2;
+        for (int i = 0; i < 2; i++)
+        {
+            SortCorrect(calm, 0, 2);
+            calm.Catch(ItemKind.Gem, 1, 0);
+        }
+        Assert.AreEqual(2, calm.Leg);
+        Assert.AreEqual(1, calm.LastLegCoins);
+    }
+
+    [Test]
+    public void AwardPaysWithoutTheStreakMultiplier()
+    {
+        var rules = new HeistSortRules();
+        SortCorrect(rules, 0, HeistSortRules.TierStreak3);
+        double before = rules.Balance;
+        rules.Award(100d);
+        Assert.AreEqual(before + 100d, rules.Balance);
+    }
+
+    [Test]
     public void GoldPaysOnEitherSideOrTrashed()
     {
         var rules = new HeistSortRules();

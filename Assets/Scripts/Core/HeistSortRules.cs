@@ -37,6 +37,7 @@ public class HeistSortRules
     public int MaxChutes = 4;
     public double CashPerSort = 50d;
     public double CashPerGold = 150d;
+    public int DynamiteCap = 3;
 
     public event Action<SortResult, int> Sorted;
     public event Action<int> VatFilled;
@@ -47,9 +48,12 @@ public class HeistSortRules
     public event Action<int, int> StreakChanged;
     public event Action<char, string, int> LetterBanked;
     public event Action<string, double> WordCompleted;
+    public event Action<GearKind, int> GearChanged;
 
     readonly int[] craft = new int[Sides];
     readonly float[] vat = new float[Sides];
+    readonly int[] gear = new int[Enum.GetValues(typeof(GearKind)).Length];
+    int legBestTier;
     bool[] filled;
     bool cooling;
     int wordIndex;
@@ -64,6 +68,8 @@ public class HeistSortRules
     public float HeatNormalized => Heat / MaxHeat;
     public string ActiveWord => Words[wordIndex];
     public int LettersFilled { get; private set; }
+    // Plinko coins earned by the leg that just finished.
+    public int LastLegCoins { get; private set; } = 1;
 
     public HeistSortRules()
     {
@@ -72,6 +78,7 @@ public class HeistSortRules
 
     public int Craft(int side) => craft[side];
     public float Vat(int side) => vat[side];
+    public int GearCount(GearKind kind) => gear[(int)kind];
 
     public float CashMultiplier
     {
@@ -171,11 +178,38 @@ public class HeistSortRules
         return result;
     }
 
-    // The player flicked an item up and away.
+    // The player flicked an item up and away. Dynamite goes in the pocket.
     public void Trash(ItemKind kind)
     {
         if (kind == ItemKind.Gold) GrantGold();
         else if (kind == ItemKind.Gem) Fault(ErrorHeat);
+        else if (kind == ItemKind.Bomb) AddGear(GearKind.Dynamite, 1);
+    }
+
+    public int GearCap(GearKind kind) => kind == GearKind.Dynamite ? DynamiteCap : int.MaxValue;
+
+    public void AddGear(GearKind kind, int amount)
+    {
+        int index = (int)kind;
+        int next = Mathf.Clamp(gear[index] + amount, 0, GearCap(kind));
+        if (next == gear[index]) return;
+        gear[index] = next;
+        GearChanged?.Invoke(kind, next);
+    }
+
+    // Cash from outside the sort, such as a Plinko slot. No streak multiplier.
+    public void Award(double amount)
+    {
+        if (amount <= 0d) return;
+        Balance += amount;
+        CashWon?.Invoke(amount, Balance);
+    }
+
+    public void Restore(double balance, int[] savedGear)
+    {
+        Balance = balance;
+        for (int i = 0; i < gear.Length; i++)
+            gear[i] = savedGear != null && i < savedGear.Length ? Mathf.Clamp(savedGear[i], 0, GearCap((GearKind)i)) : 0;
     }
 
     // An item reached the ground untouched.
@@ -194,6 +228,8 @@ public class HeistSortRules
         VatFills++;
         VatFilled?.Invoke(side);
         if (VatFills % Mathf.Max(1, VatFillsPerLeg) != 0) return;
+        LastLegCoins = PlinkoPayout.CoinsFor(legBestTier);
+        legBestTier = Tier;
         Leg++;
         LegAdvanced?.Invoke(Leg, Chutes);
     }
@@ -223,6 +259,7 @@ public class HeistSortRules
         Streak++;
         int next = TierFor(Streak);
         if (next != Tier) Tier = next;
+        legBestTier = Mathf.Max(legBestTier, Tier);
         StreakChanged?.Invoke(Streak, Tier);
     }
 
