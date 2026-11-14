@@ -36,7 +36,8 @@ AIM_HALF = 0.3             # coins drop only from the middle of the rail
 H = 1.62
 DEPTH = 0.08               # how far pins and walls stand off the back
 PIN_R = 0.013
-COIN_R = 0.032             # coin radius plus pin radius must stay clear of half the pin spacing (0.06), or a coin lands dead on the next pin and walks to a rail
+COIN_R = 0.032             # coin radius plus pin radius (0.045) must stay clear of half the pin spacing (0.06), or a coin lands dead on the next pin and walks to a rail
+                           # the Unity colliders use these same radii (CoinRadius, PinRadius in AlleySceneBuilder.Heist.cs)
 
 
 def material(name, color, metal, rough, emit=None, strength=3.0):

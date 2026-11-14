@@ -13,6 +13,11 @@ public static partial class AlleySceneBuilder
     const string PlinkoBoardModel = Art + "SM_PlinkoBoard.fbx";
     const string PlinkoCoinModel = Art + "SM_PlinkoCoin.fbx";
     const string CoinPhysicsPath = MaterialRoot + "/PM_PlinkoCoin.physicMaterial";
+    // Collider radii, equal to COIN_R and PIN_R in build_plinko_board.py. Coin
+    // plus pin (0.045) stays well under half the pin spacing (0.06), so a coin
+    // rolling off one pin falls beside the next one instead of dead on it.
+    const float CoinRadius = 0.032f;
+    const float PinRadius = 0.013f;
     static readonly string[] DoorParts = { "Bolt_0", "Bolt_1", "Bolt_2", "Bolt_3", "Ring_Outer", "Ring_Inner", "Wheel", "Keyhole" };
 
     // Two door sizes, switchable to compare: set into the painted doorway of
@@ -228,7 +233,7 @@ public static partial class AlleySceneBuilder
             {
                 SphereCollider pin = child.gameObject.AddComponent<SphereCollider>();
                 pin.center = Vector3.zero;
-                pin.radius = 0.016f;
+                pin.radius = PinRadius;
                 pin.sharedMaterial = bounce;
             }
             else if (child.name.StartsWith("Divider_") || child.name.StartsWith("Rail_") || child.name == "Floor")
@@ -246,7 +251,7 @@ public static partial class AlleySceneBuilder
         coinObject.transform.position = new Vector3(0f, -10f, 0f);
         SphereCollider coinCollider = coinObject.AddComponent<SphereCollider>();
         coinCollider.center = Vector3.zero;
-        coinCollider.radius = 0.032f;
+        coinCollider.radius = CoinRadius;
         coinCollider.sharedMaterial = bounce;
         coinObject.AddComponent<AlleyPlinkoCoin>();
         Rigidbody coin = coinObject.AddComponent<Rigidbody>();

@@ -233,7 +233,6 @@ public static class AlleyBatch
                 string prize = reward.Prize == PlinkoPrize.Cash ? "$" + reward.Cash : reward.Prize == PlinkoPrize.Gear ? reward.Gear.ToString() : "VAULT";
                 log.AppendLine("slot " + slot + " " + prize + " " + plinko.SlotHits[slot] + " (" + (100f * plinko.SlotHits[slot] / UnityEngine.Mathf.Max(1, plinko.CoinsDropped)).ToString("0") + "%)");
             }
-            foreach (string line in plinko.Trace) log.AppendLine(line);
             System.IO.File.WriteAllText(SimReport, log.ToString());
             UnityEngine.Time.timeScale = 1f;
             SessionState.SetInt("JuicyPlinkoSim", 3);

@@ -97,8 +97,6 @@ public class AlleyPlinko : MonoBehaviour
     }
 
     bool simulating;
-    float dropX;
-    public readonly List<string> Trace = new List<string>();
     public string Settings => "aim " + AimHalfWidth + " sideDrag " + sideDrag + " pinScatter " + pinScatter + " maxSpeed " + maxSpeed + " gravity " + gravity + " scale " + Scale.ToString("0.00");
     public int PinHits { get; private set; }
 
@@ -209,7 +207,6 @@ public class AlleyPlinko : MonoBehaviour
     void Drop(Rigidbody coin)
     {
         CoinsDropped++;
-        dropX = Vector3.Dot(coin.position - floor.position, Right) / Scale;
         lastPin = null;
         coin.isKinematic = false;
         // A breath of sideways drift so two drops from one spot can differ.
@@ -225,14 +222,6 @@ public class AlleyPlinko : MonoBehaviour
         for (float age = 0f; age < 12f; age += Time.deltaTime)
         {
             float height = Vector3.Dot(coin.position - floor.position, Vector3.up) / Scale;
-            if (simulating && CoinsDropped <= 1)
-            {
-                var touching = new System.Text.StringBuilder();
-                foreach (Collider c in Physics.OverlapSphere(coin.position, 0.045f * Scale))
-                    if (c.attachedRigidbody != coin) touching.Append(c.name + " ");
-                Trace.Add("  t " + age.ToString("0.00") + " x " + (Vector3.Dot(coin.position - floor.position, Right) / Scale).ToString("0.000") +
-                    " y " + height.ToString("0.000") + " v " + coin.linearVelocity.ToString("F2") + " touching " + touching);
-            }
             bool slow = coin.linearVelocity.magnitude < 0.06f;
             still = height < SlotTop && slow ? still + Time.deltaTime : 0f;
             if (still > 0.25f) break;
@@ -249,9 +238,6 @@ public class AlleyPlinko : MonoBehaviour
         active = null;
         coin.isKinematic = true;
         int slot = SlotOf(coin.position);
-        if (simulating && Trace.Count < 400)
-            Trace.Add("drop " + dropX.ToString("0.00") + " land " + (Vector3.Dot(coin.position - floor.position, Right) / Scale).ToString("0.00") +
-                " up " + (Vector3.Dot(coin.position - floor.position, Vector3.up) / Scale).ToString("0.00") + " slot " + slot);
         Pay(slot);
         if (simulating) coin.gameObject.SetActive(false);
     }
