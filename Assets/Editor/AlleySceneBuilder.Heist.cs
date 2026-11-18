@@ -4,16 +4,20 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-// The vault door progress meter and the Plinko board. Both are built from
-// ArtSource/Alley (build_vault_door.py, build_plinko_board.py) and wired to
-// the chute director's rules.
+// The vault door progress meter and the Plinko board. The vault is the
+// graffiti facade's own door, split into moving parts by import_glb.py
+// --vault-parts; the Plinko board is built by build_plinko_board.py. Both are
+// wired to the chute director's rules.
 public static partial class AlleySceneBuilder
 {
-    const string VaultDoorModel = Art + "SM_VaultDoor.fbx";
+    // The facade recess is the doorway plus 2mm a side, in model meters.
+    const float RecessModelWidth = 0.36f;
+    // The door frame's top edge stands this far above the recess, in model meters.
+    const float FrameModelBand = 0.023f;
+
     const string PlinkoBoardModel = Art + "SM_PlinkoBoard.fbx";
     const string PlinkoCoinModel = Art + "SM_PlinkoCoin.fbx";
     const string CoinPhysicsPath = MaterialRoot + "/PM_PlinkoCoin.physicMaterial";
-    static readonly string[] DoorParts = { "Bolt_0", "Bolt_1", "Bolt_2", "Bolt_3", "Ring_Outer", "Ring_Inner", "Wheel", "Keyhole" };
 
     public static void Capture(string path) { CaptureAlley(path); }
 
@@ -24,9 +28,13 @@ public static partial class AlleySceneBuilder
         GameObject facade = GameObject.Find("Vault_Facade");
         Bounds fb;
         TryBounds(facade, out fb);
-        // On the balcony railing above the vault door.
-        Vector3 position = new Vector3(fb.center.x, fb.max.y - 0.5f, fb.min.z - 0.06f);
         const float tile = 0.3f;
+        // Centered over the vault door, its bottom edge just above the door
+        // frame, so it covers none of the door.
+        Bounds way = facade.transform.Find("Facade_Recess").GetComponent<Renderer>().bounds;
+        float scale = way.size.x / RecessModelWidth;
+        float frameTop = way.max.y + FrameModelBand * scale;
+        Vector3 position = new Vector3(way.center.x, frameTop + 0.01f * scale + tile * 0.5f, fb.min.z - 0.06f);
 
         GameObject root = Empty("Word_Sign", parent, position);
         // Text reads from behind its +Z, so +Z points away from the camera.
@@ -80,48 +88,28 @@ public static partial class AlleySceneBuilder
         return rig != null ? rig : camera.gameObject.AddComponent<AlleyCameraRig>();
     }
 
-    static Dictionary<string, Material> VaultDoorMaterials()
-    {
-        Material glow = GlowMaterial(MaterialRoot + "/M_VaultKeyGlow.mat", "M_VaultKeyGlow", new Color(0.35f, 1f, 0.45f));
-        return new Dictionary<string, Material>
-        {
-            { "M_VaultSteel", LitMaterial(MaterialRoot + "/M_VaultSteel.mat", "M_VaultSteel", new Color(0.3f, 0.33f, 0.38f), 0.55f, 0.55f) },
-            { "M_VaultGold", LitMaterial(MaterialRoot + "/M_VaultGold.mat", "M_VaultGold", new Color(1f, 0.7f, 0.22f), 0.75f, 0.72f) },
-            { "M_VaultSilver", LitMaterial(MaterialRoot + "/M_VaultSilver.mat", "M_VaultSilver", new Color(0.82f, 0.84f, 0.88f), 0.7f, 0.82f) },
-            { "M_VaultDark", LitMaterial(MaterialRoot + "/M_VaultDark.mat", "M_VaultDark", new Color(0.02f, 0.022f, 0.028f), 0.4f, 0.4f) },
-            { "M_VaultKeyGlow", glow },
-        };
-    }
-
+    // The facade's own door turns its wheel a quarter per stage, slides a
+    // locking bar (then the handle) in for each of the first four stages,
+    // turns the gear lock on the fifth and swings the door open on the crack.
     static AlleyVaultDoor BuildVaultDoor(Transform parent, AlleyChuteDirector director, AlleyCameraRig rig)
     {
         GameObject facade = GameObject.Find("Vault_Facade");
-        Bounds fb;
-        if (!TryBounds(facade, out fb)) return null;
-
-        RemapMaterials(VaultDoorModel, VaultDoorMaterials());
-        // A big door mounted proud of the graffiti facade, so the bolts and
-        // rings read on a phone.
-        float width = fb.size.x * 0.56f;
-        Vector3 face = SurfacePoint(facade, new Vector3(fb.center.x, fb.min.y + fb.size.y * 0.3f, fb.center.z));
-        GameObject vault = PlaceWide(VaultDoorModel, "Vault_Door", parent, new Vector3(fb.center.x, fb.min.y, face.z), width, 180f);
-        Bounds vb;
-        TryBounds(vault, out vb);
-        // Stand the door's back on the facade's surface.
-        vault.transform.position += Vector3.forward * (face.z - vb.max.z + vb.size.z * 0.35f);
-
-        PrefabUtility.UnpackPrefabInstance(vault, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-        Transform door = vault.transform.Find("Door");
-        var bolts = new Transform[4];
-        foreach (string part in DoorParts)
+        Transform door = facade != null ? facade.transform.Find("Facade_Door") : null;
+        Transform recess = facade != null ? facade.transform.Find("Facade_Recess") : null;
+        if (door == null || recess == null)
         {
-            Transform t = vault.transform.Find(part);
-            t.SetParent(door, true);
-            if (part.StartsWith("Bolt_")) bolts[part[5] - '0'] = t;
+            Debug.LogWarning("Vault_Facade has no door parts; rebuild SM_GraffitiVaultDoor with import_glb.py --vault-parts");
+            return null;
         }
-        Transform keyhole = door.Find("Keyhole");
+        Transform wheel = door.Find("Facade_Wheel");
+        Transform gear = door.Find("Facade_Gear");
+        Bounds way = recess.GetComponent<Renderer>().bounds;
+        float scale = way.size.x / RecessModelWidth;
+        Vector3 doorway = new Vector3(way.center.x, way.center.y, way.min.z);
 
-        GameObject floodObject = Empty("Vault_Flood", vault.transform, keyhole.position + Vector3.forward * 0.6f);
+        GameObject root = Empty("Vault_Door", parent, doorway);
+        // Inside the recess, so it pours out as the door opens.
+        GameObject floodObject = Empty("Vault_Flood", root.transform, way.center);
         Light flood = floodObject.AddComponent<Light>();
         flood.type = LightType.Point;
         flood.color = new Color(1f, 0.82f, 0.45f);
@@ -129,9 +117,20 @@ public static partial class AlleySceneBuilder
         flood.intensity = 0f;
         flood.shadows = LightShadows.None;
 
-        AlleyVaultDoor component = vault.AddComponent<AlleyVaultDoor>();
-        component.Configure(director, door, bolts, door.Find("Ring_Outer"), door.Find("Ring_Inner"), door.Find("Wheel"),
-            keyhole.GetComponent<Renderer>(), flood, rig, Vector3.back);
+        var bars = new[] { door.Find("Facade_Bar_0"), door.Find("Facade_Bar_1"), door.Find("Facade_Bar_2"), door.Find("Facade_Handle") };
+        var slide = new Vector3[bars.Length];
+        for (int i = 0; i < 3; i++)
+        {
+            // Each bar draws in toward the hub, out of its keeper, and sinks
+            // a little so it passes under the wheel's spokes.
+            Vector3 toHub = wheel.position - bars[i].position;
+            toHub.z = 0f;
+            slide[i] = (toHub.normalized * 0.03f + Vector3.forward * 0.004f) * scale;
+        }
+        slide[3] = Vector3.back * 0.015f * scale;   // the handle pulls out
+
+        AlleyVaultDoor component = root.AddComponent<AlleyVaultDoor>();
+        component.Configure(director, door, bars, slide, gear, wheel, 90f, flood, rig, Vector3.back);
         return component;
     }
 

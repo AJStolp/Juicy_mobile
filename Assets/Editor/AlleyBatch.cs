@@ -82,6 +82,33 @@ public static class AlleyBatch
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 
+    // Renders the vault: the street and a close look at rest, the close look
+    // with the planted save's progress (stage 5, 4 of 16 turns), and the door
+    // swung open. Files are /tmp/juicy-vault-<street|close|stage5|open>.png.
+    public static void VaultPreviews()
+    {
+        OpenAlley();
+        AlleySceneBuilder.WireGameplayInScene();
+        var camera = UnityEngine.Camera.main;
+        var home = camera.transform.position;
+        var homeRotation = camera.transform.rotation;
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-street.png");
+        var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
+        camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
+        camera.transform.LookAt(door.Focus);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-close.png");
+        var progress = new VaultProgress();
+        progress.Restore(1, 5, 4);
+        door.Preview(progress, 0f);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-stage5.png");
+        string report = "stage 5 preview shows " + door.LockedShown() + " stages locked\n";
+        door.Preview(progress, 105f);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-open.png");
+        door.EndPreview();
+        camera.transform.SetPositionAndRotation(home, homeRotation);
+        System.IO.File.WriteAllText("/tmp/juicy-vault-previews.txt", report);
+    }
+
     // Renders the word sign over the vault with HEIST part spelled.
     public static void WordSignPreviews()
     {
@@ -155,18 +182,17 @@ public static class AlleyBatch
             var vault = director.Vault;
             var rules = director.Rules;
             var clues = director.Clues;
-            int hiddenBolts = 0;
-            foreach (var t in door.GetComponentsInChildren<UnityEngine.Transform>(true))
-                if (t.name.StartsWith("Bolt_") && !t.gameObject.activeSelf) hiddenBolts++;
-            var ring = door.transform.Find("Door/Ring_Outer").localEulerAngles;
+            // Stages 0 to 4 are locked in the planted save, so the door must
+            // show five locked: four slid bolts and the gear turned.
+            int locked = door.LockedShown();
             bool ok = vault.Heist == 1 && vault.Stage == 5 && vault.Turns == 4 && rules.Balance == 54321d &&
-                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && hiddenBolts == 4 &&
+                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5 &&
                 clues.Count == 2 && clues.Clues[0].Symbol == 6 && clues.Clues[0].Tier == 3 &&
                 clues.Clues[1].Symbol == 2 && clues.Clues[1].Tier == 0 && clues.Seed == 77 && clues.Cycle == 3 && !clues.HackDue;
             System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") +
                 " heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage +
                 " balance " + rules.Balance + " dynamite " + rules.GearCount(GearKind.Dynamite) + " drill " + rules.GearCount(GearKind.Drill) +
-                " bribe " + rules.GearCount(GearKind.Bribe) + " bolts popped " + hiddenBolts + " outer ring " + ring.ToString("F0") +
+                " bribe " + rules.GearCount(GearKind.Bribe) + " stages shown locked " + locked +
                 " clues restored " + clues.Count + "/" + clues.CluesNeeded + " symbols " + string.Join(",", clues.SymbolsSnapshot()) +
                 " tiers " + string.Join(",", clues.TiersSnapshot()) + " cycle " + clues.Cycle + " seed " + clues.Seed + "\n");
             SessionState.SetInt("JuicySaveCheck", 2);
@@ -471,7 +497,7 @@ public static class AlleyBatch
     // be checked against how Blender axes arrive in Unity.
     public static void Inspect()
     {
-        string[] models = { "Assets/Art/Alley/SM_VaultDoor.fbx", "Assets/Art/Alley/SM_PlinkoBoard.fbx" };
+        string[] models = { "Assets/Art/Alley/SM_GraffitiVaultDoor.fbx", "Assets/Art/Alley/SM_PlinkoBoard.fbx" };
         var log = new System.Text.StringBuilder();
         foreach (string path in models)
         {
