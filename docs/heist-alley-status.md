@@ -16,7 +16,7 @@ A diegetic color sort game with casino style juice: everything happens inside th
 - A correct sort pays 50 times the streak tier (x2 at 5, x3 at 10, x5 at 15). Gold pays 150. HEIST pays 25,000; the other words pay 2,500.
 - Mistakes raise heat. At 100 heat you are busted: the stage loot is lost, the screen clears, and you stay on the same leg.
 - The balance rolls up on the vault timer's screen.
-- **The vault is the objective.** Every vat fill turns the vault door one step. It has seven stages: four corner bolts, the outer ring, the inner ring and the wheel. A full stage locks for good. A bust takes back half of the stage in play, never a locked one. Locking the wheel cracks the vault, and the next heist starts on a fresh door. Turns per stage are 9, 16, then 28 from the third vault on (`VaultProgress.TurnsByHeist`). Bot runs crack vault 1 in about 12 game minutes.
+- **The vault is the objective.** Every vat fill turns the vault door one step. It has seven stages. The door is the graffiti building's own steel door: the first four stages slide its three locking bars and then its handle, the fifth turns its gear lock, and its wheel turns a quarter with every stage. A full stage locks for good. A bust takes back half of the stage in play, never a locked one. Locking the wheel cracks the vault, and the next heist starts on a fresh door. Turns per stage are 9, 16, then 28 from the third vault on (`VaultProgress.TurnsByHeist`). Bot runs crack vault 1 in about 12 game minutes.
 - **Plinko after every leg.** The sort pauses, a board swings out of the left wall beside the vault, and the camera moves onto it. Coins equal 1 plus the best streak tier reached that leg. Drag along the top rail to aim, let go to drop. Coins are real physics. Slots pay cash, a drill, a bribe, or the narrow middle vault slot, which turns the door 4 steps.
 - **Swiping dynamite away pockets it** as gear, up to 3. Gear is only counted so far; nothing spends it yet.
 - **Progress saves** between sittings: vault stage and turns, cash and gear (`HeistSave`, in PlayerPrefs). Legs, chutes, heat and streak start fresh each sitting.
@@ -24,7 +24,7 @@ A diegetic color sort game with casino style juice: everything happens inside th
 ## How the alley reacts
 
 - The raccoon stands centered on the manhole in his torch idle. He does a light push on sorts and a heavy push on vat fills, vault stages and the crack.
-- The vault door creeps forward as turns come in and grinds back slowly on a bust. Bolts back out and pop off as their stage locks; the rings and wheel turn; the keyhole glows greener as the vault fills. Locks, rollbacks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
+- The vault door creeps forward as turns come in and grinds back slowly on a bust. The bars and handle slide as their stage fills, the gear lock turns, and the wheel turns a quarter per stage. The HEIST word sign sits centered above the door frame, clear of the door. Locks, rollbacks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
 - The chests glow brighter as their vat fills, flash orange on a mistake, and snap their lid open as an item drops in.
 - The police strobe and the vault alarms run faster and brighter with heat. A bust shakes the camera. `AlleyCameraRig` owns every camera move: shakes, pushes, and the Plinko hold.
 - Lamps flicker, the wall lamps hum, steam rises from the manhole, and clouds drift across the moon.
@@ -40,7 +40,8 @@ A diegetic color sort game with casino style juice: everything happens inside th
 | Falling items, swipes, chests, reactions, score | `Assets/Scripts/Alley/` |
 | Keeping the torch upright and the raccoon on his spot | `TorchGrip.cs`, `StandOnSpot.cs` in `Assets/Scripts/Alley/` |
 | Scene builder (layout, lighting, gameplay wiring) | `Assets/Editor/AlleySceneBuilder.cs`; the vault door and Plinko board in `AlleySceneBuilder.Heist.cs` |
-| Art built from code | `ArtSource/Alley/`: `build_deposit_chests.py`, `build_alley_road.py`, `build_night_sky.py`, `build_vault_door.py`, `build_plinko_board.py` |
+| Vault door parts | `ArtSource/Alley/import_glb.py --vault-parts` (with `facade_vault_parts.py`) splits the facade model's own door into moving parts |
+| Art built from code | `ArtSource/Alley/`: `build_deposit_chests.py`, `build_alley_road.py`, `build_night_sky.py`, `build_plinko_board.py` |
 | Turning a Tripo or fal.ai GLB into an alley asset | `ArtSource/Alley/import_glb.py` |
 
 The art scripts run headless in Blender, for example `blender -b -P ArtSource/Alley/build_alley_road.py`. `import_glb.py` takes `--cut` to strip stray geometry and `--untextured` for models colored in game.
@@ -85,4 +86,4 @@ Running tools in the open editor: write an `AlleyBatch` method name to `/tmp/jui
 
 ## TLDR
 
-The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bolts pop, rings and wheel turn, busts grind the current stage back, and cracking it opens the door. Every leg ends in a physics Plinko round on a board that swings out of the wall beside the vault. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core (32 tests), and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`); next up are T-001 Plinko physics, T-002 Plinko look and T-003 missed gems failing visibly.
+The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bars slide, the gear and wheel turn, busts grind the current stage back, and cracking it opens the door. Every leg ends in a physics Plinko round on a board that swings out of the wall beside the vault. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core (32 tests), and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`); next up are T-001 Plinko physics, T-002 Plinko look and T-003 missed gems failing visibly.

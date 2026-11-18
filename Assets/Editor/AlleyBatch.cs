@@ -82,49 +82,31 @@ public static class AlleyBatch
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 
-    // Switches the vault option and rewires the scene, for SaveCheck and
-    // captures on each option with Unity closed.
-    public static void UseVaultCodeDoor() { OpenAlley(); AlleySceneBuilder.UseVaultOption(VaultDoorOption.CodeDoor); }
-    public static void UseVaultFacadeDoor() { OpenAlley(); AlleySceneBuilder.UseVaultOption(VaultDoorOption.FacadeDoor); }
-    public static void UseVaultFacadeLights() { OpenAlley(); AlleySceneBuilder.UseVaultOption(VaultDoorOption.FacadeLights); }
-
-    // Renders every vault option: the street and a close look at rest, the
-    // close look with the planted save's progress (stage 5, 4 of 16 turns),
-    // and for option A the door swung open. Files are
-    // /tmp/juicy-vault-<option>-<street|close|stage5|open>.png. Leaves the
-    // option that was selected.
+    // Renders the vault: the street and a close look at rest, the close look
+    // with the planted save's progress (stage 5, 4 of 16 turns), and the door
+    // swung open. Files are /tmp/juicy-vault-<street|close|stage5|open>.png.
     public static void VaultPreviews()
     {
         OpenAlley();
-        VaultDoorOption selected = AlleySceneBuilder.VaultOption;
+        AlleySceneBuilder.WireGameplayInScene();
         var camera = UnityEngine.Camera.main;
-        var report = new System.Text.StringBuilder();
-        foreach (VaultDoorOption option in System.Enum.GetValues(typeof(VaultDoorOption)))
-        {
-            AlleySceneBuilder.UseVaultOption(option);
-            string stem = "/tmp/juicy-vault-" + option;
-            var home = camera.transform.position;
-            var homeRotation = camera.transform.rotation;
-            AlleySceneBuilder.Capture(stem + "-street.png");
-            var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
-            camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
-            camera.transform.LookAt(door.Focus);
-            AlleySceneBuilder.Capture(stem + "-close.png");
-            var progress = new VaultProgress();
-            progress.Restore(1, 5, 4);
-            door.Preview(progress, 0f);
-            AlleySceneBuilder.Capture(stem + "-stage5.png");
-            report.AppendLine(option + " stage 5 preview shows " + door.LockedShown() + " stages locked");
-            if (option == VaultDoorOption.FacadeDoor)
-            {
-                door.Preview(progress, 105f);
-                AlleySceneBuilder.Capture(stem + "-open.png");
-            }
-            door.EndPreview();
-            camera.transform.SetPositionAndRotation(home, homeRotation);
-        }
-        AlleySceneBuilder.UseVaultOption(selected);
-        System.IO.File.WriteAllText("/tmp/juicy-vault-previews.txt", report.ToString());
+        var home = camera.transform.position;
+        var homeRotation = camera.transform.rotation;
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-street.png");
+        var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
+        camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
+        camera.transform.LookAt(door.Focus);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-close.png");
+        var progress = new VaultProgress();
+        progress.Restore(1, 5, 4);
+        door.Preview(progress, 0f);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-stage5.png");
+        string report = "stage 5 preview shows " + door.LockedShown() + " stages locked\n";
+        door.Preview(progress, 105f);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-open.png");
+        door.EndPreview();
+        camera.transform.SetPositionAndRotation(home, homeRotation);
+        System.IO.File.WriteAllText("/tmp/juicy-vault-previews.txt", report);
     }
 
     // Renders the word sign over the vault with HEIST part spelled.
@@ -200,11 +182,8 @@ public static class AlleyBatch
             var vault = director.Vault;
             var rules = director.Rules;
             var clues = director.Clues;
-            int hiddenBolts = 0;
-            foreach (var t in door.GetComponentsInChildren<UnityEngine.Transform>(true))
-                if (t.name.StartsWith("Bolt_") && !t.gameObject.activeSelf) hiddenBolts++;
             // Stages 0 to 4 are locked in the planted save, so the door must
-            // show five locked: popped or slid bolts, a turned ring, lit lamps.
+            // show five locked: four slid bolts and the gear turned.
             int locked = door.LockedShown();
             bool ok = vault.Heist == 1 && vault.Stage == 5 && vault.Turns == 4 && rules.Balance == 54321d &&
                 rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5 &&
@@ -213,7 +192,7 @@ public static class AlleyBatch
             System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") +
                 " heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage +
                 " balance " + rules.Balance + " dynamite " + rules.GearCount(GearKind.Dynamite) + " drill " + rules.GearCount(GearKind.Drill) +
-                " bribe " + rules.GearCount(GearKind.Bribe) + " bolts popped " + hiddenBolts + " stages shown locked " + locked +
+                " bribe " + rules.GearCount(GearKind.Bribe) + " stages shown locked " + locked +
                 " clues restored " + clues.Count + "/" + clues.CluesNeeded + " symbols " + string.Join(",", clues.SymbolsSnapshot()) +
                 " tiers " + string.Join(",", clues.TiersSnapshot()) + " cycle " + clues.Cycle + " seed " + clues.Seed + "\n");
             SessionState.SetInt("JuicySaveCheck", 2);
@@ -416,7 +395,7 @@ public static class AlleyBatch
     // be checked against how Blender axes arrive in Unity.
     public static void Inspect()
     {
-        string[] models = { "Assets/Art/Alley/SM_VaultDoor.fbx", "Assets/Art/Alley/SM_PlinkoBoard.fbx" };
+        string[] models = { "Assets/Art/Alley/SM_GraffitiVaultDoor.fbx", "Assets/Art/Alley/SM_PlinkoBoard.fbx" };
         var log = new System.Text.StringBuilder();
         foreach (string path in models)
         {
