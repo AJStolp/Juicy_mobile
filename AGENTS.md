@@ -18,9 +18,9 @@ the release path, and the tools.
   with nothing to take the frontier. It works one ticket at a time, with separate agents to
   build, QA and merge, and stops at the promotion PR.
 - **Branches:** a ticket branch comes off `dev` and carries the ticket id in its name
-  (`T-001-plinko-physics`). Its PR squash merges into `dev` with a `Refs T-001` trailer, and the
+  (`T-003-missed-gems`). Its PR squash merges into `dev` with a `Refs T-003` trailer, and the
   ticket moves to `done`. The promotion PR from `dev` into `main` merges with a merge commit and
-  carries `Closes T-001` trailers. After it merges, the tickets it carries move to `closed`.
+  carries `Closes T-003` trailers. After it merges, the tickets it carries move to `closed`.
 - **Release:** there is no production build yet, so `main` is the end of the line. The lead
   opens the promotion PR and **does not merge it until Anthony has seen the evidence and said
   go**, because this is design work.
@@ -60,26 +60,24 @@ carries its own proof, uploaded to the ticket as a file:
 
 ```
 curl -s -X POST http://100.76.63.94:8000/api/projects/juicysortgame/tickets/T-001/evidence/upload \
-  -F "file=@/tmp/juicy-plinko-after.mp4" -F "detail=200 coin run after the fix" -F "passed=true"
+  -F "file=@/tmp/juicy-bot.txt" -F "detail=bot run that cracks vault 1" -F "passed=true"
 ```
 
 `passed` comes from an exit code or a measured number against the ticket's target, never from
 a judgment that it looks fine.
 
 - **Stills:** `AlleySceneBuilder.Capture(path)` renders the main camera at 1080x1920. The
-  `AlleyBatch` methods use it: `Previews` (vault door sizes, door close up, Plinko open) and
+  `AlleyBatch` methods use it: `Previews` (vault door sizes, door close up) and
   `WordSignPreviews`. Add a method there for a new view rather than a one-off script.
-- **Motion** (a coin drop, a gem shattering): capture a frame sequence with `Capture` in Play
+- **Motion** (a door swinging open, a gem shattering): capture a frame sequence with `Capture` in Play
   mode, then `ffmpeg -framerate 30 -i frame_%03d.png -pix_fmt yuv420p out.mp4`.
-- **Numbers:** `AlleyBatch.PlinkoSim` writes slot counts to `/tmp/juicy-plinko-sim.txt`,
-  `AlleyBatch.Bot` writes a run report to `/tmp/juicy-bot.txt`, and `AlleyBatch.SaveCheck`
+- **Numbers:** `AlleyBatch.Bot` writes a run report to `/tmp/juicy-bot.txt`, and `AlleyBatch.SaveCheck`
   writes to `/tmp/juicy-save-check.txt`.
 
 Run them with Unity closed:
 
 ```
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit
-$U -batchmode -projectPath . -executeMethod AlleyBatch.PlinkoSim    # no -quit; exits when the report is written
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Bot          # no -quit
 ```
 

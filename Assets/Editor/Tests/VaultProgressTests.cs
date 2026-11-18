@@ -29,7 +29,7 @@ public class VaultProgressTests
         int locks = 0;
         vault.StageLocked += _ => locks++;
         vault.Turn(2);
-        vault.Turn(PlinkoPayout.VaultTurns);
+        vault.Turn(ClueRules.PerfectHackTurns);
         Assert.AreEqual(2, locks);
         Assert.AreEqual(2, vault.Stage);
         Assert.AreEqual(0, vault.Turns);
@@ -69,7 +69,7 @@ public class VaultProgressTests
         vault.Cracked += h => cracked = h;
         vault.Turn(2 * VaultProgress.Stages - 1);
         Assert.AreEqual(0, cracked);
-        vault.Turn(1 + PlinkoPayout.VaultTurns);
+        vault.Turn(1 + ClueRules.PerfectHackTurns);
         Assert.AreEqual(1, cracked);
         Assert.AreEqual(2, vault.Heist);
         Assert.AreEqual(0, vault.Stage);

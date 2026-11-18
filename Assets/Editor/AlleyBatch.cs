@@ -50,8 +50,8 @@ public static class AlleyBatch
         AlleySceneBuilder.WireGameplayInScene();
     }
 
-    // Wires the scene and renders the street with the vault door, a close
-    // look at the door, and the Plinko board swung open.
+    // Wires the scene and renders the street with the vault door and a close
+    // look at the door.
     public static void Previews()
     {
         OpenAlley();
@@ -64,20 +64,6 @@ public static class AlleyBatch
         camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
         camera.transform.LookAt(door.Focus);
         AlleySceneBuilder.Capture("/tmp/juicy-vault-large-close.png");
-        var hinge = UnityEngine.GameObject.Find("Plinko_Hinge").transform;
-        var closed = hinge.rotation;
-        hinge.rotation = UnityEngine.Quaternion.Euler(0f, 152f, 0f);
-        var view = UnityEngine.GameObject.Find("Plinko_View").transform;
-        var floor = UnityEngine.GameObject.Find("Plinko_Board").transform.Find("Floor");
-        camera.transform.position = view.position;
-        camera.transform.LookAt(floor.position + UnityEngine.Vector3.up * 0.715f);
-        float fov = camera.fieldOfView;
-        camera.fieldOfView = 58f;
-        UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 2.5f;
-        AlleySceneBuilder.Capture("/tmp/juicy-plinko-open.png");
-        camera.fieldOfView = fov;
-        UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 0f;
-        hinge.rotation = closed;
         camera.transform.SetPositionAndRotation(home, homeRotation);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
@@ -185,62 +171,6 @@ public static class AlleyBatch
         }
     }
 
-    // Drops 200 coins on the Plinko board at 8x with the bot's aim and counts
-    // the slots they land in. Result in /tmp/juicy-plinko-sim.txt.
-    const string SimReport = "/tmp/juicy-plinko-sim.txt";
-    const int SimCoins = 200;
-
-    public static void PlinkoSim()
-    {
-        OpenAlley();
-        System.IO.File.WriteAllText("/tmp/juicy-alley-bot", "sim");
-        SessionState.SetInt("JuicyPlinkoSim", 1);
-        EditorApplication.update += PlinkoSimTick;
-        EditorApplication.isPlaying = true;
-    }
-
-    [InitializeOnLoadMethod]
-    static void ResumePlinkoSim()
-    {
-        if (SessionState.GetInt("JuicyPlinkoSim", 0) != 0) EditorApplication.update += PlinkoSimTick;
-    }
-
-    static void PlinkoSimTick()
-    {
-        int step = SessionState.GetInt("JuicyPlinkoSim", 0);
-        var plinko = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyPlinko>() : null;
-        if (step == 1 && plinko != null && UnityEngine.Time.frameCount > 5)
-        {
-            UnityEngine.Time.timeScale = 8f;
-            plinko.Simulate(SimCoins);
-            SessionState.SetInt("JuicyPlinkoSim", 2);
-            return;
-        }
-        if (step == 2 && plinko != null && !plinko.Running && plinko.Rounds > 0)
-        {
-            var log = new System.Text.StringBuilder("coins " + plinko.CoinsDropped + " jostles " + plinko.Jostles + " pin hits " + plinko.PinHits + "\n" + plinko.Settings + "\n");
-            for (int slot = 0; slot < PlinkoPayout.SlotCount; slot++)
-            {
-                PlinkoReward reward = PlinkoPayout.For(slot);
-                string prize = reward.Prize == PlinkoPrize.Cash ? "$" + reward.Cash : reward.Prize == PlinkoPrize.Gear ? reward.Gear.ToString() : "VAULT";
-                log.AppendLine("slot " + slot + " " + prize + " " + plinko.SlotHits[slot] + " (" + (100f * plinko.SlotHits[slot] / UnityEngine.Mathf.Max(1, plinko.CoinsDropped)).ToString("0") + "%)");
-            }
-            foreach (string line in plinko.Trace) log.AppendLine(line);
-            System.IO.File.WriteAllText(SimReport, log.ToString());
-            UnityEngine.Time.timeScale = 1f;
-            SessionState.SetInt("JuicyPlinkoSim", 3);
-            EditorApplication.isPlaying = false;
-            return;
-        }
-        if (step == 3 && !EditorApplication.isPlaying)
-        {
-            SessionState.SetInt("JuicyPlinkoSim", 0);
-            EditorApplication.update -= PlinkoSimTick;
-            System.IO.File.Delete("/tmp/juicy-alley-bot");
-            if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(0);
-        }
-    }
-
     // Measures the editor's CPU use in Play mode, 15 seconds each: uncapped,
     // at the frame rate cap, and at 30. Plays as a person would (no bot,
     // normal speed, nothing touched), and splits each frame into game, render
@@ -323,53 +253,11 @@ public static class AlleyBatch
         }
     }
 
-    // Measures how much each renderer's bounds overlap the Plinko board's
-    // bounds, with the board swung open and folded against the wall, and
-    // writes every overlap above zero to /tmp/juicy-plinko-clearance.txt.
-    // The first line is the largest prop overlap; the walls, back building
-    // and vault facade the board sits against are listed but not counted.
-    public static void PlinkoClearance()
-    {
-        OpenAlley();
-        var hinge = UnityEngine.GameObject.Find("Plinko_Hinge").transform;
-        var board = UnityEngine.GameObject.Find("Plinko_Board");
-        var closed = hinge.rotation;
-        var log = new System.Text.StringBuilder();
-        float worst = 0f;
-        var poses = new[] { ("open", UnityEngine.Quaternion.Euler(0f, 152f, 0f)), ("folded", UnityEngine.Quaternion.Euler(0f, 90f, 0f)) };
-        foreach (var (pose, rotation) in poses)
-        {
-            hinge.rotation = rotation;
-            var renderers = board.GetComponentsInChildren<UnityEngine.Renderer>();
-            var boardBounds = renderers[0].bounds;
-            foreach (var r in renderers) boardBounds.Encapsulate(r.bounds);
-            log.AppendLine(pose + " board bounds min " + boardBounds.min.ToString("F3") + " max " + boardBounds.max.ToString("F3"));
-            foreach (var r in UnityEngine.Object.FindObjectsByType<UnityEngine.Renderer>(UnityEngine.FindObjectsSortMode.None))
-            {
-                if (r.transform.IsChildOf(hinge.parent)) continue;
-                var b = r.bounds;
-                var size = UnityEngine.Vector3.Max(UnityEngine.Vector3.Min(b.max, boardBounds.max) - UnityEngine.Vector3.Max(b.min, boardBounds.min), UnityEngine.Vector3.zero);
-                float volume = size.x * size.y * size.z;
-                if (volume <= 0f) continue;
-                string path = r.name;
-                for (var t = r.transform.parent; t != null; t = t.parent) path = t.name + "/" + path;
-                string top = path.Split('/').Length > 2 ? path.Split('/')[2] : r.name;
-                bool structure = top.StartsWith("Alley_Wall_") || top == "Back_Building" || top == "Vault_Facade";
-                if (!structure) worst = UnityEngine.Mathf.Max(worst, volume);
-                log.AppendLine("  " + pose + " " + path + (structure ? " (structure, not counted)" : "") + " overlap " + volume.ToString("F5") +
-                    " m3, size " + size.ToString("F3") + ", its bounds min " + b.min.ToString("F3") + " max " + b.max.ToString("F3"));
-            }
-        }
-        hinge.rotation = closed;
-        log.Insert(0, "largest prop overlap " + worst.ToString("F5") + " m3\n");
-        System.IO.File.WriteAllText("/tmp/juicy-plinko-clearance.txt", log.ToString());
-    }
-
     // Prints where the named children of the built models sit, so code can
     // be checked against how Blender axes arrive in Unity.
     public static void Inspect()
     {
-        string[] models = { "Assets/Art/Alley/SM_VaultDoor.fbx", "Assets/Art/Alley/SM_PlinkoBoard.fbx" };
+        string[] models = { "Assets/Art/Alley/SM_VaultDoor.fbx" };
         var log = new System.Text.StringBuilder();
         foreach (string path in models)
         {
@@ -378,7 +266,6 @@ public static class AlleyBatch
             if (prefab == null) continue;
             foreach (UnityEngine.Transform t in prefab.GetComponentsInChildren<UnityEngine.Transform>())
             {
-                if (t.name.StartsWith("Pin_") && t.name != "Pin_0_1") continue;
                 log.AppendLine("  " + t.name + " parent " + (t.parent ? t.parent.name : "-") + " local " + t.localPosition.ToString("F3") +
                     " rot " + t.localEulerAngles.ToString("F0") + " scale " + t.localScale.ToString("F2"));
             }

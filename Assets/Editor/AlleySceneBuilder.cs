@@ -401,9 +401,6 @@ public static partial class AlleySceneBuilder
             }
             PlaceWide(Art + "SM_Dumpster.fbx", "Dumpster", set, new Vector3(-1.2f, 0f, 5.6f), 1.3f, 160f);
             PlaceWide(ArmoredCarModel, "Getaway_Car", set, new Vector3(1.15f, 0f, 7.2f), 2f, -115f);
-            // The pipe's brackets reach 0.7m off the wall, so it stays down
-            // the alley from the Plinko board's hinge at z 9, clear of the
-            // board both open and folded.
             PlacePipe("Drainpipe_Left", set, new Vector3(-1.85f, 0f, 7.5f), 2.6f);
             PlacePipe("Drainpipe_Right", set, new Vector3(1.85f, 0f, 9.6f), 2.6f);
             PlaceUniform(Art + "SM_GarbageBag.fbx", "Trash_Bag_01", set, new Vector3(-0.55f, 0f, 5.9f), 0.42f, 15f);
@@ -721,8 +718,7 @@ public static partial class AlleySceneBuilder
         AlleyCameraRig rig = EnsureCameraRig();
         AlleyReactions reactions = directorObject.AddComponent<AlleyReactions>();
         reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), rig);
-        AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig);
-        BuildPlinko(grid, director, vaultDoor, rig);
+        BuildVaultDoor(grid, director, rig);
         BuildWordSign(grid, director);
 
         BuildScoreReadout(director);
