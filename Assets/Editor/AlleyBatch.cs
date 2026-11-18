@@ -317,6 +317,48 @@ public static class AlleyBatch
         }
     }
 
+    // Measures how much each renderer's bounds overlap the Plinko board's
+    // bounds, with the board swung open and folded against the wall, and
+    // writes every overlap above zero to /tmp/juicy-plinko-clearance.txt.
+    // The first line is the largest prop overlap; the walls, back building
+    // and vault facade the board sits against are listed but not counted.
+    public static void PlinkoClearance()
+    {
+        OpenAlley();
+        var hinge = UnityEngine.GameObject.Find("Plinko_Hinge").transform;
+        var board = UnityEngine.GameObject.Find("Plinko_Board");
+        var closed = hinge.rotation;
+        var log = new System.Text.StringBuilder();
+        float worst = 0f;
+        var poses = new[] { ("open", UnityEngine.Quaternion.Euler(0f, 152f, 0f)), ("folded", UnityEngine.Quaternion.Euler(0f, 90f, 0f)) };
+        foreach (var (pose, rotation) in poses)
+        {
+            hinge.rotation = rotation;
+            var renderers = board.GetComponentsInChildren<UnityEngine.Renderer>();
+            var boardBounds = renderers[0].bounds;
+            foreach (var r in renderers) boardBounds.Encapsulate(r.bounds);
+            log.AppendLine(pose + " board bounds min " + boardBounds.min.ToString("F3") + " max " + boardBounds.max.ToString("F3"));
+            foreach (var r in UnityEngine.Object.FindObjectsByType<UnityEngine.Renderer>(UnityEngine.FindObjectsSortMode.None))
+            {
+                if (r.transform.IsChildOf(hinge.parent)) continue;
+                var b = r.bounds;
+                var size = UnityEngine.Vector3.Max(UnityEngine.Vector3.Min(b.max, boardBounds.max) - UnityEngine.Vector3.Max(b.min, boardBounds.min), UnityEngine.Vector3.zero);
+                float volume = size.x * size.y * size.z;
+                if (volume <= 0f) continue;
+                string path = r.name;
+                for (var t = r.transform.parent; t != null; t = t.parent) path = t.name + "/" + path;
+                string top = path.Split('/').Length > 2 ? path.Split('/')[2] : r.name;
+                bool structure = top.StartsWith("Alley_Wall_") || top == "Back_Building" || top == "Vault_Facade";
+                if (!structure) worst = UnityEngine.Mathf.Max(worst, volume);
+                log.AppendLine("  " + pose + " " + path + (structure ? " (structure, not counted)" : "") + " overlap " + volume.ToString("F5") +
+                    " m3, size " + size.ToString("F3") + ", its bounds min " + b.min.ToString("F3") + " max " + b.max.ToString("F3"));
+            }
+        }
+        hinge.rotation = closed;
+        log.Insert(0, "largest prop overlap " + worst.ToString("F5") + " m3\n");
+        System.IO.File.WriteAllText("/tmp/juicy-plinko-clearance.txt", log.ToString());
+    }
+
     // Prints where the named children of the built models sit, so code can
     // be checked against how Blender axes arrive in Unity.
     public static void Inspect()
