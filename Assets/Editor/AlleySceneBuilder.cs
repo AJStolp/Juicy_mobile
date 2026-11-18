@@ -67,7 +67,6 @@ public static partial class AlleySceneBuilder
         DressRaccoon(raccoon, controller);
 
         Place(Art + "SM_WoodenCargoCrates.fbx", "Heavy_Crates", framing.transform, new Vector3(1.35f, 0f, 3.1f), new Vector3(0.7f, 0.62f, 0.7f), 8f);
-        PlaceUniform(Art + "SM_RustyPadlock.fbx", "Vault_Padlock", framing.transform, Vector3.zero, 0.16f, 0f);
 
         LayoutAlley();
         EditorSceneManager.SaveScene(scene, ScenePath);
@@ -401,9 +400,6 @@ public static partial class AlleySceneBuilder
             }
             PlaceWide(Art + "SM_Dumpster.fbx", "Dumpster", set, new Vector3(-1.2f, 0f, 5.6f), 1.3f, 160f);
             PlaceWide(ArmoredCarModel, "Getaway_Car", set, new Vector3(1.15f, 0f, 7.2f), 2f, -115f);
-            // The pipe's brackets reach 0.7m off the wall, so it stays down
-            // the alley from the Plinko board's hinge at z 9, clear of the
-            // board both open and folded.
             PlacePipe("Drainpipe_Left", set, new Vector3(-1.85f, 0f, 7.5f), 2.6f);
             PlacePipe("Drainpipe_Right", set, new Vector3(1.85f, 0f, 9.6f), 2.6f);
             PlaceUniform(Art + "SM_GarbageBag.fbx", "Trash_Bag_01", set, new Vector3(-0.55f, 0f, 5.9f), 0.42f, 15f);
@@ -445,8 +441,6 @@ public static partial class AlleySceneBuilder
         PlaceWide(HangingLampModel, "Hanging_Lamp_Left", spots, windowTop + new Vector3(-0.6f, 0f, 0f), 0.7f, 180f);
         PlaceWide(HangingLampModel, "Hanging_Lamp_Right", spots, windowTop + new Vector3(0.6f, 0f, 0f), 0.7f, 180f);
         MoveTo("Police_Lightbar_Alarm", new Vector3(0f, vaultBounds.max.y, vaultBounds.center.z));
-        Vector3 handle = SurfacePoint(vault, new Vector3(vaultBounds.size.x * 0.15f, vaultBounds.min.y + vaultBounds.size.y * 0.375f, vaultBounds.center.z));
-        MoveTo("Vault_Padlock", handle + new Vector3(0f, -0.08f, -0.06f));
 
         StageRaccoon();
     }
@@ -684,12 +678,11 @@ public static partial class AlleySceneBuilder
 
     // The chute director, its item pool, the two color chests, the reactions
     // and the vault timer readout. Static loot placeholders give way to the
-    // falling items; the crates and padlock stay as dressing.
+    // falling items; the crates stay as dressing.
     static void BuildGameplay()
     {
         Transform framing = GameObject.Find("Alley_Framing").transform;
         Reparent("Heavy_Crates", framing);
-        Reparent("Vault_Padlock", framing);
         string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign", "Vault_Keypad", "Clue_Trip" };
         for (int i = 0; i < retired.Length; i++)
         {
@@ -722,7 +715,6 @@ public static partial class AlleySceneBuilder
         AlleyReactions reactions = directorObject.AddComponent<AlleyReactions>();
         reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), rig);
         AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig);
-        BuildPlinko(grid, director, vaultDoor, rig);
         BuildWordSign(grid, director);
         EnsureWalk();
         BuildClueTrip(grid, director, vaultDoor, rig, raccoon);
