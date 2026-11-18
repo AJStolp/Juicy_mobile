@@ -135,6 +135,116 @@ public static partial class AlleySceneBuilder
         return component;
     }
 
+    // The hack keypad sits on the building front beside the vault door, at
+    // hand height: a steel plate with six symbol keys in two columns and the
+    // reward ladder's lamps above them. The hack camera holds square on it,
+    // close enough that every key reads on a phone.
+    static AlleyHack BuildHack(Transform parent, AlleyChuteDirector director, AlleyVaultDoor vaultDoor, AlleyCameraRig rig)
+    {
+        GameObject facade = GameObject.Find("Vault_Facade");
+        Bounds fb;
+        if (!TryBounds(facade, out fb)) return null;
+        // Left of the door: the right side has a drainpipe near the wall.
+        float doorLeft = fb.center.x - fb.size.x * 0.28f;
+        Bounds vb;
+        if (vaultDoor != null && TryBounds(vaultDoor.gameObject, out vb)) doorLeft = vb.min.x;
+        const float plateWidth = 0.42f;
+        const float plateHeight = 0.66f;
+        float x = doorLeft - 0.1f - plateWidth * 0.5f;
+        // Under the pink lamp the facade mounts beside the door, which would
+        // otherwise sit in front of the bottom keys.
+        float y = fb.min.y + 0.41f;
+        Vector3 face = SurfacePoint(facade, new Vector3(x, y, fb.center.z));
+        Vector3 center = new Vector3(x, y, face.z - 0.03f);
+
+        GameObject root = Empty("Vault_Keypad", parent, center);
+        // Text reads from behind its +Z, so +Z points away from the camera.
+        root.transform.rotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+        Material steel = LitMaterial(MaterialRoot + "/M_VaultSteel.mat", "M_VaultSteel", new Color(0.3f, 0.33f, 0.38f), 0.55f, 0.55f);
+        Material tileMaterial = LitMaterial(MaterialRoot + "/M_WordTile.mat", "M_WordTile", Color.white, 0.4f, 0.6f);
+
+        KeypadBlock("Plate", root.transform, Vector3.zero, new Vector3(plateWidth, plateHeight, 0.04f), steel, false);
+
+        var keys = new Renderer[AlleyHack.Keys];
+        var glyphs = new TextMeshPro[AlleyHack.Keys];
+        const float key = 0.14f;
+        for (int i = 0; i < AlleyHack.Keys; i++)
+        {
+            int column = i % 2;
+            int row = i / 2;
+            Vector3 at = new Vector3((column - 0.5f) * (key + 0.03f), 0.075f - row * (key + 0.015f), -0.03f);
+            Renderer renderer = KeypadBlock("Key_" + i, root.transform, at, new Vector3(key, key, 0.04f), tileMaterial, true);
+            keys[i] = renderer;
+            glyphs[i] = KeypadText(renderer.transform, "?", Color.white);
+        }
+
+        var lamps = new Renderer[AlleyHack.LadderLamps];
+        var labels = new TextMeshPro[AlleyHack.LadderLamps];
+        const float lampStep = 0.096f;
+        for (int i = 0; i < AlleyHack.LadderLamps; i++)
+        {
+            Vector3 at = new Vector3((i - (AlleyHack.LadderLamps - 1) * 0.5f) * lampStep, 0.255f, -0.03f);
+            Renderer renderer = KeypadBlock("Lamp_" + i, root.transform, at, new Vector3(lampStep - 0.01f, 0.08f, 0.03f), tileMaterial, false);
+            lamps[i] = renderer;
+            labels[i] = KeypadText(renderer.transform, "", new Color(0.05f, 0.04f, 0.03f));
+        }
+
+        // From a little above, looking down at the keys like a person would.
+        GameObject viewObject = Empty("Vault_Keypad_View", root.transform, center + new Vector3(0f, 0.42f, -1.15f));
+        viewObject.transform.rotation = Quaternion.LookRotation(center + Vector3.up * 0.02f - viewObject.transform.position, Vector3.up);
+
+        Light padLight = Empty("Vault_Keypad_Light", root.transform, center + new Vector3(0f, 0.3f, -0.6f)).AddComponent<Light>();
+        padLight.type = LightType.Point;
+        padLight.color = new Color(0.85f, 0.92f, 1f);
+        padLight.range = 1.6f;
+        padLight.intensity = 0f;
+        padLight.shadows = LightShadows.None;
+
+        // Between the hack camera and the wall, so the red floods the view.
+        Light alarm = Empty("Vault_Keypad_Alarm", root.transform, center + new Vector3(0f, 0.7f, -0.9f)).AddComponent<Light>();
+        alarm.type = LightType.Point;
+        alarm.color = new Color(1f, 0.08f, 0.06f);
+        alarm.range = 5f;
+        alarm.intensity = 0f;
+        alarm.shadows = LightShadows.None;
+
+        AlleyHack hack = root.AddComponent<AlleyHack>();
+        hack.Configure(director, vaultDoor, rig, keys, glyphs, lamps, labels, viewObject.transform, padLight, alarm);
+        EditorUtility.SetDirty(root);
+        return hack;
+    }
+
+    static Renderer KeypadBlock(string name, Transform parent, Vector3 localPosition, Vector3 size, Material material, bool collider)
+    {
+        GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        if (!collider) Object.DestroyImmediate(cube.GetComponent<Collider>());
+        cube.name = name;
+        cube.transform.SetParent(parent, false);
+        cube.transform.localPosition = localPosition;
+        cube.transform.localScale = size;
+        Renderer renderer = cube.GetComponent<Renderer>();
+        renderer.sharedMaterial = material;
+        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+        return renderer;
+    }
+
+    static TextMeshPro KeypadText(Transform block, string text, Color color)
+    {
+        GameObject glyph = new GameObject("Glyph");
+        glyph.transform.SetParent(block, false);
+        glyph.transform.localPosition = new Vector3(0f, 0f, -0.55f);
+        TextMeshPro tmp = glyph.AddComponent<TextMeshPro>();
+        tmp.rectTransform.sizeDelta = new Vector2(0.9f, 0.9f);
+        tmp.enableAutoSizing = true;
+        tmp.fontSizeMin = 0.05f;
+        tmp.fontSizeMax = 12f;
+        tmp.fontStyle = FontStyles.Bold;
+        tmp.alignment = TextAlignmentOptions.Center;
+        tmp.color = color;
+        tmp.text = text;
+        return tmp;
+    }
+
     static Dictionary<string, Material> PlinkoMaterials()
     {
         return new Dictionary<string, Material>
