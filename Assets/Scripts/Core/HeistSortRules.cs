@@ -70,6 +70,9 @@ public class HeistSortRules
     public int LettersFilled { get; private set; }
     // Plinko coins earned by the leg that just finished.
     public int LastLegCoins { get; private set; } = 1;
+    // Best streak tier (0 to 3) of the leg that just finished, set before
+    // LegAdvanced fires so a listener can read it.
+    public int LastLegBestTier { get; private set; }
 
     public HeistSortRules()
     {
@@ -228,6 +231,7 @@ public class HeistSortRules
         VatFills++;
         VatFilled?.Invoke(side);
         if (VatFills % Mathf.Max(1, VatFillsPerLeg) != 0) return;
+        LastLegBestTier = legBestTier;
         LastLegCoins = PlinkoPayout.CoinsFor(legBestTier);
         legBestTier = Tier;
         Leg++;
