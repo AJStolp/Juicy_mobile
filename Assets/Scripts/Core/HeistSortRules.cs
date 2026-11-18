@@ -68,8 +68,6 @@ public class HeistSortRules
     public float HeatNormalized => Heat / MaxHeat;
     public string ActiveWord => Words[wordIndex];
     public int LettersFilled { get; private set; }
-    // Plinko coins earned by the leg that just finished.
-    public int LastLegCoins { get; private set; } = 1;
     // Best streak tier (0 to 3) of the leg that just finished, set before
     // LegAdvanced fires so a listener can read it.
     public int LastLegBestTier { get; private set; }
@@ -200,7 +198,7 @@ public class HeistSortRules
         GearChanged?.Invoke(kind, next);
     }
 
-    // Cash from outside the sort, such as a Plinko slot. No streak multiplier.
+    // Cash from outside the sort, such as a clue hack prize. No streak multiplier.
     public void Award(double amount)
     {
         if (amount <= 0d) return;
@@ -232,7 +230,6 @@ public class HeistSortRules
         VatFilled?.Invoke(side);
         if (VatFills % Mathf.Max(1, VatFillsPerLeg) != 0) return;
         LastLegBestTier = legBestTier;
-        LastLegCoins = PlinkoPayout.CoinsFor(legBestTier);
         legBestTier = Tier;
         Leg++;
         LegAdvanced?.Invoke(Leg, Chutes);

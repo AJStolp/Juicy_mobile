@@ -74,22 +74,13 @@ public static class AlleyBotRun
         if (!hooked) Hook(director);
 
         float now = Time.time;
-        var plinko = Object.FindAnyObjectByType<AlleyPlinko>();
         if (now >= nextProgress)
         {
             nextProgress = now + 10f;
             File.AppendAllText(Progress, System.DateTime.Now.ToString("HH:mm:ss") + " game " + now.ToString("0") + "s stage " + director.Vault.Stage +
-                " turns " + director.Vault.Turns + " leg " + director.Rules.Leg + " plinko " + (plinko != null && plinko.Running) + " errors " + errors + "\n");
+                " turns " + director.Vault.Turns + " leg " + director.Rules.Leg + " errors " + errors + "\n");
         }
         maxDynamite = Mathf.Max(maxDynamite, director.Rules.GearCount(GearKind.Dynamite));
-        if (plinko != null && plinko.Running && plinko.CoinsDropped > 0 && !shots.ContainsKey("plinko"))
-        {
-            Shoot("plinko", now, 0.3f);
-            Camera cam = Camera.main;
-            var view = GameObject.Find("Plinko_View");
-            events.Add(now.ToString("0") + "s plinko camera " + cam.transform.position.ToString("F2") + " fov " + cam.fieldOfView.ToString("0") +
-                " view " + (view != null ? view.transform.position.ToString("F2") : "none"));
-        }
         if (now >= 12f) Shoot("street", now, 0f);
         var hack = Object.FindAnyObjectByType<AlleyHack>();
         if (hack != null && hack.Running) Shoot("hack", now, 1.5f);
@@ -105,7 +96,7 @@ public static class AlleyBotRun
 
         bool done = (crackTime >= 0f && now >= crackTime + AfterCrack) || now >= MaxGameSeconds;
         if (!done) return;
-        File.WriteAllText(Report, Describe(director, plinko, now));
+        File.WriteAllText(Report, Describe(director, now));
         SessionState.SetBool("JuicyBot", false);
         Time.timeScale = 1f;
         if (File.Exists(AutoPlayFlag)) File.Delete(AutoPlayFlag);
@@ -132,7 +123,7 @@ public static class AlleyBotRun
             events.Add(Time.time.ToString("0") + "s vault " + heist + " cracked");
             Shoot("crack", Time.time, 2.4f);
         };
-        director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg + ", plinko coins " + director.Rules.LastLegCoins);
+        director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg);
     }
 
     // Until the clue trip plays in the alley nothing finds clues, so the bot
@@ -165,7 +156,7 @@ public static class AlleyBotRun
         shots[name] = now + delay;
     }
 
-    static string Describe(AlleyChuteDirector director, AlleyPlinko plinko, float now)
+    static string Describe(AlleyChuteDirector director, float now)
     {
         var reactions = Object.FindAnyObjectByType<AlleyReactions>();
         var door = Object.FindAnyObjectByType<AlleyVaultDoor>();
@@ -182,11 +173,6 @@ public static class AlleyBotRun
         foreach (float t in lockTimes) { gaps.Append((t - last).ToString("0") + "s "); last = t; }
         log.AppendLine("seconds per stage " + gaps);
         if (door != null) log.AppendLine("door pops " + door.Pops + " rollbacks " + door.Rollbacks + " cracks " + door.Cracks);
-        if (plinko != null)
-        {
-            log.AppendLine("plinko rounds " + plinko.Rounds + " coins " + plinko.CoinsDropped + " vault hits " + plinko.VaultHits + " jostles " + plinko.Jostles +
-                " slots " + string.Join(",", plinko.SlotHits));
-        }
         log.AppendLine("hacks " + hacks + " perfect " + perfectHacks + " failed " + (hacks - perfectHacks) + " steps " + hackSteps +
             " clues waiting " + director.Clues.Count + "/" + director.Clues.CluesNeeded);
         log.AppendLine("gear dynamite " + rules.GearCount(GearKind.Dynamite) + " (max held " + maxDynamite + ", cap " + rules.DynamiteCap + ")" +

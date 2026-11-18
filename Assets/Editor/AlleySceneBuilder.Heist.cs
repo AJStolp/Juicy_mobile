@@ -4,20 +4,15 @@ using UnityEditor;
 using UnityEngine;
 using Object = UnityEngine.Object;
 
-// The vault door progress meter and the Plinko board. The vault is the
+// The vault door progress meter and the hack keypad. The vault is the
 // graffiti facade's own door, split into moving parts by import_glb.py
-// --vault-parts; the Plinko board is built by build_plinko_board.py. Both are
-// wired to the chute director's rules.
+// --vault-parts. Both are wired to the chute director's rules.
 public static partial class AlleySceneBuilder
 {
     // The facade recess is the doorway plus 2mm a side, in model meters.
     const float RecessModelWidth = 0.36f;
     // The door frame's top edge stands this far above the recess, in model meters.
     const float FrameModelBand = 0.023f;
-
-    const string PlinkoBoardModel = Art + "SM_PlinkoBoard.fbx";
-    const string PlinkoCoinModel = Art + "SM_PlinkoCoin.fbx";
-    const string CoinPhysicsPath = MaterialRoot + "/PM_PlinkoCoin.physicMaterial";
 
     public static void Capture(string path) { CaptureAlley(path); }
 
@@ -242,144 +237,5 @@ public static partial class AlleySceneBuilder
         tmp.color = color;
         tmp.text = text;
         return tmp;
-    }
-
-    static Dictionary<string, Material> PlinkoMaterials()
-    {
-        return new Dictionary<string, Material>
-        {
-            { "M_PlinkoBack", LitMaterial(MaterialRoot + "/M_PlinkoBack.mat", "M_PlinkoBack", new Color(0.07f, 0.08f, 0.1f), 0.5f, 0.45f) },
-            { "M_PlinkoBrass", LitMaterial(MaterialRoot + "/M_PlinkoBrass.mat", "M_PlinkoBrass", new Color(0.95f, 0.66f, 0.25f), 0.75f, 0.7f) },
-            { "M_PlinkoPin", LitMaterial(MaterialRoot + "/M_PlinkoPin.mat", "M_PlinkoPin", new Color(0.82f, 0.84f, 0.88f), 0.7f, 0.85f) },
-            { "M_PlinkoVaultGlow", GlowMaterial(MaterialRoot + "/M_PlinkoVaultGlow.mat", "M_PlinkoVaultGlow", new Color(0.35f, 1f, 0.45f)) },
-        };
-    }
-
-    // The board hangs on a hinge at the left alley wall, just short of the
-    // vault, folded flat against the bricks. A round swings it out to face the
-    // street with the vault still in view to its right.
-    static void BuildPlinko(Transform parent, AlleyChuteDirector director, AlleyVaultDoor vaultDoor, AlleyCameraRig rig)
-    {
-        RemapMaterials(PlinkoBoardModel, PlinkoMaterials());
-        RemapMaterials(PlinkoCoinModel, new Dictionary<string, Material>
-        {
-            { "M_PlinkoCoin", LitMaterial(MaterialRoot + "/M_PlinkoCoin.mat", "M_PlinkoCoin", new Color(1f, 0.75f, 0.25f), 0.8f, 0.8f) },
-        });
-
-        GameObject root = Empty("Plinko", parent, Vector3.zero);
-        GameObject hinge = Empty("Plinko_Hinge", root.transform, new Vector3(-1.5f, 0.25f, 9.0f));
-        hinge.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
-
-        GameObject board = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(PlinkoBoardModel), hinge.transform);
-        board.name = "Plinko_Board";
-        PrefabUtility.UnpackPrefabInstance(board, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-        // Board origin is the back's center; its bottom is 0.81 below and its
-        // edge 0.64 to the side. Put that edge on the hinge, back to the wall.
-        board.transform.localRotation = Quaternion.identity;
-        board.transform.localScale = Vector3.one;
-        board.transform.localPosition = new Vector3(-0.64f, 0.81f, 0.04f);
-
-        PhysicsMaterial bounce = AssetDatabase.LoadAssetAtPath<PhysicsMaterial>(CoinPhysicsPath);
-        if (bounce == null)
-        {
-            bounce = new PhysicsMaterial("PM_PlinkoCoin");
-            AssetDatabase.CreateAsset(bounce, CoinPhysicsPath);
-        }
-        bounce.bounciness = 0.2f;
-        bounce.dynamicFriction = 0.05f;
-        bounce.staticFriction = 0.05f;
-        bounce.bounceCombine = PhysicsMaterialCombine.Maximum;
-        bounce.frictionCombine = PhysicsMaterialCombine.Minimum;
-        EditorUtility.SetDirty(bounce);
-
-        foreach (Transform child in board.transform)
-        {
-            if (child.name.StartsWith("Pin_"))
-            {
-                SphereCollider pin = child.gameObject.AddComponent<SphereCollider>();
-                pin.center = Vector3.zero;
-                pin.radius = 0.016f;
-                pin.sharedMaterial = bounce;
-            }
-            else if (child.name.StartsWith("Divider_") || child.name.StartsWith("Rail_") || child.name == "Floor")
-            {
-                child.gameObject.AddComponent<BoxCollider>().sharedMaterial = bounce;
-            }
-        }
-        Transform floor = board.transform.Find("Floor");
-        Transform railLeft = board.transform.Find("Rail_L");
-        Transform railRight = board.transform.Find("Rail_R");
-
-        GameObject coinObject = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(PlinkoCoinModel), root.transform);
-        coinObject.name = "Plinko_Coin_Template";
-        PrefabUtility.UnpackPrefabInstance(coinObject, PrefabUnpackMode.Completely, InteractionMode.AutomatedAction);
-        coinObject.transform.position = new Vector3(0f, -10f, 0f);
-        SphereCollider coinCollider = coinObject.AddComponent<SphereCollider>();
-        coinCollider.center = Vector3.zero;
-        coinCollider.radius = 0.032f;
-        coinCollider.sharedMaterial = bounce;
-        coinObject.AddComponent<AlleyPlinkoCoin>();
-        Rigidbody coin = coinObject.AddComponent<Rigidbody>();
-        coin.mass = 0.02f;
-        coin.useGravity = false;
-        coin.interpolation = RigidbodyInterpolation.Interpolate;
-        coin.collisionDetectionMode = CollisionDetectionMode.ContinuousDynamic;
-        coin.isKinematic = true;
-
-        // Lay out the camera spot and labels with the board swung open.
-        const float OpenYaw = 62f;
-        hinge.transform.rotation = Quaternion.Euler(0f, 90f + OpenYaw, 0f);
-        Vector3 right = (railRight.position - railLeft.position).normalized;
-        Vector3 front = board.transform.forward;
-        Vector3 center = floor.position + Vector3.up * 0.72f;
-        // Back down the street, clear of the fire escapes and the car, looking
-        // up the alley at the board with the vault beside it.
-        GameObject view = Empty("Plinko_View", root.transform, center + new Vector3(0.45f, 0.35f, -2.6f));
-        // Aimed now, while the board is open; at round start it is still shut.
-        view.transform.LookAt(center);
-        for (int slot = 0; slot < PlinkoPayout.SlotCount; slot++)
-        {
-            float x = (slot - (PlinkoPayout.SlotCount - 1) * 0.5f) * 0.12f;
-            SlotLabel(board.transform, PlinkoPayout.For(slot), floor.position + right * x + front * 0.05f);
-        }
-        GameObject lightObject = Empty("Plinko_Light", root.transform, center + front * 0.9f + Vector3.up * 0.6f);
-        Light boardLight = lightObject.AddComponent<Light>();
-        boardLight.type = LightType.Point;
-        boardLight.color = new Color(1f, 0.88f, 0.7f);
-        boardLight.range = 3f;
-        boardLight.shadows = LightShadows.None;
-        hinge.transform.rotation = Quaternion.Euler(0f, 90f, 0f);
-        // The light rides with the board, so it can't light the wall behind.
-        lightObject.transform.SetParent(hinge.transform, true);
-
-        AlleyPlinko plinko = root.AddComponent<AlleyPlinko>();
-        plinko.Configure(director, vaultDoor, rig, hinge.transform, board.transform, floor, railLeft, railRight, coin, view.transform, boardLight);
-        EditorUtility.SetDirty(root);
-    }
-
-    static void SlotLabel(Transform board, PlinkoReward reward, Vector3 position)
-    {
-        string text;
-        Color color = new Color(1f, 0.85f, 0.5f);
-        switch (reward.Prize)
-        {
-            case PlinkoPrize.Vault: text = "VAULT"; color = new Color(0.45f, 1f, 0.55f); break;
-            case PlinkoPrize.Gear: text = reward.Gear.ToString().ToUpperInvariant(); color = new Color(1f, 0.55f, 0.35f); break;
-            default: text = "$" + reward.Cash.ToString("0"); break;
-        }
-        GameObject label = new GameObject("Label_" + text);
-        label.transform.SetParent(board, false);
-        label.transform.position = position;
-        // Text reads from behind its +Z, so +Z points into the board.
-        label.transform.rotation = Quaternion.LookRotation(-board.forward, Vector3.up);
-        TextMeshPro tmp = label.AddComponent<TextMeshPro>();
-        tmp.rectTransform.sizeDelta = new Vector2(0.11f, 0.06f);
-        tmp.enableAutoSizing = true;
-        tmp.fontSizeMin = 0.05f;
-        tmp.fontSizeMax = 1.2f;
-        tmp.fontStyle = FontStyles.Bold;
-        tmp.alignment = TextAlignmentOptions.Center;
-        tmp.color = color;
-        tmp.text = text;
     }
 }

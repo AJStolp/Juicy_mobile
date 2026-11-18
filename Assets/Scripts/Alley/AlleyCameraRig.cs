@@ -2,7 +2,7 @@ using UnityEngine;
 
 // Owns the alley camera's pose. Gameplay asks for moments instead of moving
 // the camera itself: a shake, a short push toward something worth seeing
-// (the vault turning), or a hold on a pose until released (Plinko).
+// (the vault turning), or a hold on a pose until released.
 public class AlleyCameraRig : MonoBehaviour
 {
     [SerializeField] float holdBlendSpeed = 1.6f;

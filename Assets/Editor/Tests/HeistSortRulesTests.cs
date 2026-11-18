@@ -109,30 +109,6 @@ public class HeistSortRulesTests
     }
 
     [Test]
-    public void LegCoinsCountTheBestTierReachedThatLeg()
-    {
-        var rules = new HeistSortRules();
-        rules.CorrectsToFillVat = 5;
-        rules.VatFillsPerLeg = 2;
-        SortCorrect(rules, 0, 5);
-        rules.Catch(ItemKind.Gem, 1, 0);
-        SortCorrect(rules, 0, 5);
-        Assert.AreEqual(2, rules.Leg);
-        Assert.AreEqual(2, rules.LastLegCoins);
-
-        var calm = new HeistSortRules();
-        calm.CorrectsToFillVat = 2;
-        calm.VatFillsPerLeg = 2;
-        for (int i = 0; i < 2; i++)
-        {
-            SortCorrect(calm, 0, 2);
-            calm.Catch(ItemKind.Gem, 1, 0);
-        }
-        Assert.AreEqual(2, calm.Leg);
-        Assert.AreEqual(1, calm.LastLegCoins);
-    }
-
-    [Test]
     public void AwardPaysWithoutTheStreakMultiplier()
     {
         var rules = new HeistSortRules();
