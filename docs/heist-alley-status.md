@@ -69,6 +69,7 @@ $U -batchmode -projectPath . -executeMethod AlleyBatch.Wire -quit
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit   # street with the vault door, door close up, Plinko open
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Bot              # no -quit; exits when the report is written
 $U -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck        # no -quit
+$U -batchmode -projectPath . -executeMethod AlleyBatch.PlinkoClearance -quit   # prop overlap with the Plinko board, open and folded
 $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults <file>
 ```
 
