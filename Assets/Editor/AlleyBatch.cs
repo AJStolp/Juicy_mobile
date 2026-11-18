@@ -91,20 +91,15 @@ public static class AlleyBatch
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 
-    // Renders the word sign in both places with HEIST part spelled, then
-    // leaves the scene on the vault placement.
+    // Renders the word sign over the vault with HEIST part spelled.
     public static void WordSignPreviews()
     {
         OpenAlley();
-        foreach (bool street in new[] { true, false })
-        {
-            AlleySceneBuilder.SetWordSignStreet(street);
-            AlleySceneBuilder.WireGameplayInScene();
-            var sign = UnityEngine.Object.FindAnyObjectByType<AlleyWordSign>();
-            sign.Show("HEIST", i => i == 0 || i == 2);
-            AlleySceneBuilder.Capture("/tmp/juicy-word-" + (street ? "street" : "vault") + ".png");
-            sign.Show("HEIST", _ => false);
-        }
+        AlleySceneBuilder.WireGameplayInScene();
+        var sign = UnityEngine.Object.FindAnyObjectByType<AlleyWordSign>();
+        sign.Show("HEIST", i => i == 0 || i == 2);
+        AlleySceneBuilder.Capture("/tmp/juicy-word-vault.png");
+        sign.Show("HEIST", _ => false);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 

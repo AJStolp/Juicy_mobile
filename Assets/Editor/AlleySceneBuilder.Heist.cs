@@ -30,47 +30,20 @@ public static partial class AlleySceneBuilder
 
     public static void Capture(string path) { CaptureAlley(path); }
 
-    // Two places for the word sign, switchable to compare: over the vault on
-    // the balcony, or a rack on the street between the chests, near the thumb.
-    const string WordSignStreetPref = "Juicy.Alley.WordSignStreet";
-    static bool WordSignStreet { get { return EditorPrefs.GetBool(WordSignStreetPref, false); } }
-
-    [MenuItem("Juicy/Alley/Word Sign/Over The Vault")]
-    static void UseVaultWordSign() { EditorPrefs.SetBool(WordSignStreetPref, false); WireGameplayInScene(); }
-    [MenuItem("Juicy/Alley/Word Sign/On The Street")]
-    static void UseStreetWordSign() { EditorPrefs.SetBool(WordSignStreetPref, true); WireGameplayInScene(); }
-
-    public static void SetWordSignStreet(bool street) { EditorPrefs.SetBool(WordSignStreetPref, street); }
-
     const int WordSignSlots = 6;
 
     static AlleyWordSign BuildWordSign(Transform parent, AlleyChuteDirector director)
     {
-        Vector3 position;
-        Vector3 facing;
-        float tile;
-        Camera camera = Camera.main;
-        if (WordSignStreet)
-        {
-            // In front of the chests, tipped back to face the camera.
-            position = new Vector3(0f, 0.12f, -1.15f);
-            tile = 0.15f;
-            facing = position - camera.transform.position;
-        }
-        else
-        {
-            GameObject facade = GameObject.Find("Vault_Facade");
-            Bounds fb;
-            TryBounds(facade, out fb);
-            // On the balcony railing above the vault door.
-            position = new Vector3(fb.center.x, fb.max.y - 0.5f, fb.min.z - 0.06f);
-            tile = 0.3f;
-            facing = Vector3.forward;
-        }
+        GameObject facade = GameObject.Find("Vault_Facade");
+        Bounds fb;
+        TryBounds(facade, out fb);
+        // On the balcony railing above the vault door.
+        Vector3 position = new Vector3(fb.center.x, fb.max.y - 0.5f, fb.min.z - 0.06f);
+        const float tile = 0.3f;
 
         GameObject root = Empty("Word_Sign", parent, position);
         // Text reads from behind its +Z, so +Z points away from the camera.
-        root.transform.rotation = Quaternion.LookRotation(facing, Vector3.up);
+        root.transform.rotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
         Material material = LitMaterial(MaterialRoot + "/M_WordTile.mat", "M_WordTile", Color.white, 0.4f, 0.6f);
         material.EnableKeyword("_EMISSION");
         material.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
