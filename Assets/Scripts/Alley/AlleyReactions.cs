@@ -2,7 +2,8 @@ using UnityEngine;
 
 // The alley answers the game: the raccoon pushes on sorts, vat fills and vault
 // stages, the police strobe and vault alarms run hotter with heat, the camera
-// shakes on mistakes and busts, and the existing sound hooks play.
+// shakes on mistakes and busts, and the existing sound hooks play. A gem that
+// hits the street sets off a red alarm pulse across the alley and a jolt.
 public class AlleyReactions : MonoBehaviour
 {
     [SerializeField] AlleyChuteDirector director;
@@ -10,15 +11,22 @@ public class AlleyReactions : MonoBehaviour
     [SerializeField] LightAnimator[] heatLights;
     [SerializeField] AlleyCameraRig cameraRig;
     [SerializeField] double bigWinChime = 150d;
+    [SerializeField] Color alarmColor = new Color(1f, 0.05f, 0.04f);
+    [SerializeField] float alarmPeak = 30f;
+    [SerializeField] float alarmTime = 0.6f;
+    [SerializeField] float missJolt = 0.3f;
 
     HeistSortRules rules;
     VaultProgress vault;
     float shownHeat;
+    Light alarm;
+    float alarmLeft;
 
     public int PushLights { get; private set; }
     public int PushHeavies { get; private set; }
     public int Legs { get; private set; }
     public int Busts { get; private set; }
+    public int Alarms { get; private set; }
     public float ShownHeat => shownHeat;
 
     public void Configure(AlleyChuteDirector chute, Animator mascot, LightAnimator[] lights, AlleyCameraRig rig)
@@ -37,6 +45,7 @@ public class AlleyReactions : MonoBehaviour
         rules.LegAdvanced += OnLegAdvanced;
         rules.CashWon += OnCashWon;
         rules.Busted += OnBusted;
+        director.MissLanded += OnMissLanded;
         vault = director.Vault;
         vault.StageLocked += OnStageLocked;
         vault.Cracked += OnCracked;
@@ -50,6 +59,7 @@ public class AlleyReactions : MonoBehaviour
         rules.LegAdvanced -= OnLegAdvanced;
         rules.CashWon -= OnCashWon;
         rules.Busted -= OnBusted;
+        if (director != null) director.MissLanded -= OnMissLanded;
         if (vault == null) return;
         vault.StageLocked -= OnStageLocked;
         vault.Cracked -= OnCracked;
@@ -112,6 +122,38 @@ public class AlleyReactions : MonoBehaviour
         Shake(0.6f);
     }
 
+    // Only a gem costs anything when missed, so only a gem sets off the alarm.
+    void OnMissLanded(AlleyItem item)
+    {
+        if (item.Kind != ItemKind.Gem) return;
+        Alarms++;
+        Shake(missJolt);
+        if (alarm == null)
+        {
+            GameObject alarmObject = new GameObject("Miss_Alarm");
+            alarmObject.transform.SetParent(transform, false);
+            alarmObject.transform.position = new Vector3(0f, 1.4f, -0.9f);
+            alarm = alarmObject.AddComponent<Light>();
+            alarm.type = LightType.Point;
+            alarm.color = alarmColor;
+            alarm.range = 7f;
+            alarm.shadows = LightShadows.None;
+            alarm.renderMode = LightRenderMode.ForcePixel;
+        }
+        alarmLeft = alarmTime;
+    }
+
+    // Two quick red pulses, the second weaker.
+    void TickAlarm(float dt)
+    {
+        if (alarm == null) return;
+        alarmLeft = Mathf.Max(0f, alarmLeft - dt);
+        float elapsed = alarmTime - alarmLeft;
+        float pulse = Mathf.Abs(Mathf.Sin(elapsed / alarmTime * Mathf.PI * 2f));
+        alarm.intensity = alarmLeft > 0f ? alarmPeak * pulse * (alarmLeft / alarmTime) : 0f;
+        alarm.enabled = alarmLeft > 0f;
+    }
+
     void Shake(float amount)
     {
         if (cameraRig != null) cameraRig.Shake(amount);
@@ -121,6 +163,7 @@ public class AlleyReactions : MonoBehaviour
     {
         float target = rules != null ? rules.HeatNormalized : 0f;
         shownHeat = Mathf.MoveTowards(shownHeat, target, Time.deltaTime * 1.2f);
+        TickAlarm(Time.deltaTime);
         for (int i = 0; i < heatLights.Length; i++)
         {
             if (heatLights[i] != null) heatLights[i].SetDrive(1f + shownHeat * 2.5f, 0.3f + shownHeat * 1.5f);

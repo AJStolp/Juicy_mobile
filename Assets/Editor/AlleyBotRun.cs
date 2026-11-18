@@ -7,7 +7,9 @@ using UnityEngine;
 // open editor enters Play mode with the director on auto play at 4x speed. It
 // plays until the first vault cracks (or 25 game minutes), captures frames at
 // the big moments, writes /tmp/juicy-bot.txt, then stops. Times in the report
-// are game seconds, so they read as a real player's pace.
+// are game seconds, so they read as a real player's pace. The first gem the
+// bot lets fall is filmed at normal speed, 30 frames a game second, into
+// /tmp/juicy-bot-miss/, with a still of the impact at /tmp/juicy-bot-miss-land.png.
 [InitializeOnLoad]
 public static class AlleyBotRun
 {
@@ -18,6 +20,11 @@ public static class AlleyBotRun
     const float Speed = 4f;
     const float MaxGameSeconds = 1500f;
     const float AfterCrack = 6f;
+    const string MissFrames = "/tmp/juicy-bot-miss";
+    const string MissLand = "/tmp/juicy-bot-miss-land.png";
+    const float MissFilmFrom = 1.3f;
+    const float MissFilmAfter = 1.2f;
+    const float MissFilmMax = 3f;
 
     static int errors;
     static string firstError = "";
@@ -30,6 +37,11 @@ public static class AlleyBotRun
     static int maxDynamite;
     static readonly Dictionary<string, float> shots = new Dictionary<string, float>();
     static float nextProgress;
+    static float missFilmStart = -1f;
+    static float missLanded = -1f;
+    static bool missFilmed;
+    static int missFrame;
+    static int missLastFrame;
 
     static AlleyBotRun()
     {
@@ -88,6 +100,7 @@ public static class AlleyBotRun
                 " view " + (view != null ? view.transform.position.ToString("F2") : "none"));
         }
         if (now >= 12f) Shoot("street", now, 0f);
+        FilmMiss(now);
 
         var due = new List<string>();
         foreach (var pair in shots)
@@ -103,6 +116,7 @@ public static class AlleyBotRun
         File.WriteAllText(Report, Describe(director, plinko, now));
         SessionState.SetBool("JuicyBot", false);
         Time.timeScale = 1f;
+        Time.captureFramerate = 0;
         if (File.Exists(AutoPlayFlag)) File.Delete(AutoPlayFlag);
         EditorApplication.isPlaying = false;
     }
@@ -126,7 +140,57 @@ public static class AlleyBotRun
             events.Add(Time.time.ToString("0") + "s vault " + heist + " cracked");
             Shoot("crack", Time.time, 2.4f);
         };
+        director.MissLanded += item =>
+        {
+            if (item.Kind != ItemKind.Gem || missFilmStart < 0f || missLanded >= 0f) return;
+            missLanded = Time.time;
+            events.Add(Time.time.ToString("0") + "s missed gem landed at " + item.transform.position.ToString("F2"));
+            Capture(MissLand);
+        };
         director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg + ", plinko coins " + director.Rules.LastLegCoins);
+    }
+
+    // Once a gem the bot skipped drops toward the street, slow to normal speed
+    // at a fixed 30 frames a game second and save every frame until the
+    // shatter has played out.
+    static void FilmMiss(float now)
+    {
+        if (missFilmed) return;
+        if (missFilmStart < 0f)
+        {
+            foreach (AlleyItem item in Object.FindObjectsByType<AlleyItem>(FindObjectsSortMode.None))
+            {
+                if (item.State != AlleyItem.Phase.Falling || item.Kind != ItemKind.Gem || item.transform.position.y > MissFilmFrom) continue;
+                if (Directory.Exists(MissFrames)) Directory.Delete(MissFrames, true);
+                Directory.CreateDirectory(MissFrames);
+                if (File.Exists(MissLand)) File.Delete(MissLand);
+                missFilmStart = now;
+                missFrame = 0;
+                missLastFrame = -1;
+                Time.timeScale = 1f;
+                Time.captureFramerate = 30;
+                break;
+            }
+            if (missFilmStart < 0f) return;
+        }
+        if (Time.frameCount != missLastFrame)
+        {
+            missLastFrame = Time.frameCount;
+            Capture(MissFrames + "/frame_" + missFrame.ToString("000") + ".png");
+            missFrame++;
+        }
+        bool over = missLanded >= 0f ? now >= missLanded + MissFilmAfter : now >= missFilmStart + MissFilmMax;
+        if (!over) return;
+        Time.captureFramerate = 0;
+        Time.timeScale = Speed;
+        // A bust can clear the gem before it lands; film the next one instead.
+        if (missLanded < 0f)
+        {
+            missFilmStart = -1f;
+            return;
+        }
+        missFilmed = true;
+        events.Add(now.ToString("0") + "s miss film " + missFrame + " frames");
     }
 
     // Queues a capture once per name, delay seconds from now.
@@ -160,7 +224,7 @@ public static class AlleyBotRun
         }
         log.AppendLine("gear dynamite " + rules.GearCount(GearKind.Dynamite) + " (max held " + maxDynamite + ", cap " + rules.DynamiteCap + ")" +
             " drill " + rules.GearCount(GearKind.Drill) + " bribe " + rules.GearCount(GearKind.Bribe));
-        if (reactions != null) log.AppendLine("raccoon pushHeavy " + reactions.PushHeavies + " busts " + reactions.Busts);
+        if (reactions != null) log.AppendLine("raccoon pushHeavy " + reactions.PushHeavies + " busts " + reactions.Busts + " miss alarms " + reactions.Alarms);
         log.AppendLine("particles " + ParticleCount());
         log.AppendLine("raccoon " + RaccoonFeet());
         log.AppendLine("saved " + PlayerPrefs.GetString("Juicy.HeistSave.Bot", "none"));

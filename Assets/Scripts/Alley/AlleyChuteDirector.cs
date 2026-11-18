@@ -21,6 +21,14 @@ public class AlleyChuteDirector : MonoBehaviour
     [SerializeField] float spawnInterval = 0.85f;
     [SerializeField] float fallSpeed = 1.6f;
     [SerializeField] float groundY = 0.1f;
+    [Tooltip("Height where an unswiped item starts drifting toward the front of the street, so it never drops behind a chest.")]
+    [SerializeField] float approachY = 1.6f;
+    [Tooltip("Z of the street in front of the chests, where a missed item lands.")]
+    [SerializeField] float streetZ = -0.75f;
+    [Tooltip("How far across a missed item lands, as a fraction of its chute's x, so the outer chutes stay on screen.")]
+    [SerializeField] float streetSpread = 0.75f;
+    [SerializeField] float streetY = 0f;
+    [SerializeField] float landTime = 0.75f;
     [Tooltip("Shortest swipe that counts, as a fraction of screen height.")]
     [SerializeField] float minSwipe = 0.04f;
     [Tooltip("How close a press must be to an item to grab it, as a fraction of screen height.")]
@@ -64,6 +72,10 @@ public class AlleyChuteDirector : MonoBehaviour
     public int Flicks { get; private set; }
     public int Misses { get; private set; }
 
+    // A missed item has hit the street in front of the chests. The miss is
+    // already counted when this fires.
+    public event System.Action<AlleyItem> MissLanded;
+
     public static Color GemColor(int colorId) => colorId == 0 ? Ruby : Sapphire;
 
     public void Configure(Transform[] dropPoints, AlleyBin[] colorBins, AlleyItem template)
@@ -75,21 +87,8 @@ public class AlleyChuteDirector : MonoBehaviour
 
     void Awake()
     {
-        Rules = new HeistSortRules();
-        Vault = new VaultProgress();
-        Rules.Busted += ClearLive;
-        Rules.Busted += Vault.Bust;
-        Rules.VatFilled += _ => Vault.Turn(TurnsPerVatFill);
         view = Camera.main;
-        itemTemplate.gameObject.SetActive(false);
-        for (int i = 0; i < poolSize; i++)
-        {
-            AlleyItem item = Instantiate(itemTemplate, transform);
-            item.name = "Item_" + i;
-            item.Park();
-            idle.Enqueue(item);
-        }
-        for (int i = 0; i < bins.Length; i++) bins[i].Bind(Rules);
+        Wire(new HeistSortRules(), new VaultProgress());
 #if UNITY_EDITOR
         if (System.IO.File.Exists("/tmp/juicy-alley-bot")) autoPlay = true;
 #endif
@@ -102,6 +101,26 @@ public class AlleyChuteDirector : MonoBehaviour
         Vault.RolledBack += (_, __) => SaveNow();
         Vault.Cracked += _ => SaveNow();
         Rules.GearChanged += (_, __) => SaveNow();
+    }
+
+    // Hooks the rules to the vault and fills the item pool. Awake calls it;
+    // tests call it to drive items without a scene or a save.
+    public void Wire(HeistSortRules rules, VaultProgress vault)
+    {
+        Rules = rules;
+        Vault = vault;
+        Rules.Busted += ClearLive;
+        Rules.Busted += Vault.Bust;
+        Rules.VatFilled += _ => Vault.Turn(TurnsPerVatFill);
+        itemTemplate.gameObject.SetActive(false);
+        for (int i = 0; i < poolSize; i++)
+        {
+            AlleyItem item = Instantiate(itemTemplate, transform);
+            item.name = "Item_" + i;
+            item.Park();
+            idle.Enqueue(item);
+        }
+        for (int i = 0; i < bins.Length; i++) bins[i].Bind(Rules);
     }
 
     string CurrentSaveKey => autoPlay ? BotSaveKey : SaveKey;
@@ -141,14 +160,21 @@ public class AlleyChuteDirector : MonoBehaviour
         if (spawnTimer < spawnInterval || idle.Count == 0) return;
         spawnTimer = 0f;
 
-        AlleyItem item = idle.Dequeue();
         ItemKind kind = Rules.KindForRoll(Random.value);
         int colorId = kind == ItemKind.Gem ? Random.Range(0, HeistSortRules.Sides) : 0;
         char letter = kind == ItemKind.Letter ? Rules.PickLetter(Random.value) : '\0';
-        Transform drop = drops[ChuteOrder[Random.Range(0, Rules.Chutes)]];
-        item.Launch(kind, colorId, GemColor(colorId), letter, drop.position);
+        Drop(kind, colorId, letter, ChuteOrder[Random.Range(0, Rules.Chutes)]);
+    }
+
+    // Sends one item down the given chute (0 to 3, left to right).
+    public AlleyItem Drop(ItemKind kind, int colorId, char letter, int chute)
+    {
+        if (idle.Count == 0) return null;
+        AlleyItem item = idle.Dequeue();
+        item.Launch(kind, colorId, GemColor(colorId), letter, drops[chute].position);
         live.Add(item);
         Spawned++;
+        return item;
     }
 
     void TickInput()
@@ -207,7 +233,7 @@ public class AlleyChuteDirector : MonoBehaviour
         item.BeginFlight(side, bins[side].Mouth, flightTime);
     }
 
-    void TickItems(float dt)
+    public void TickItems(float dt)
     {
         float drop = fallSpeed * dt;
         for (int i = live.Count - 1; i >= 0; i--)
@@ -217,10 +243,21 @@ public class AlleyChuteDirector : MonoBehaviour
             {
                 case AlleyItem.Phase.Falling:
                     item.Fall(drop, dt);
+                    // Dynamite keeps its old fall: straight down and gone.
+                    if (item.Kind != ItemKind.Bomb) item.Approach(StreetSpot(item.Origin), ApproachFraction(item.transform.position.y));
                     if (item.transform.position.y > groundY) break;
                     Misses++;
                     Rules.Miss(item.Kind);
-                    Recycle(i);
+                    if (item.Kind == ItemKind.Bomb)
+                    {
+                        Recycle(i);
+                        break;
+                    }
+                    item.BeginLanding(streetY, landTime);
+                    MissLanded?.Invoke(item);
+                    break;
+                case AlleyItem.Phase.Landed:
+                    if (item.Advance(dt)) Recycle(i);
                     break;
                 case AlleyItem.Phase.Flying:
                     if (!item.Advance(dt)) break;
@@ -238,6 +275,18 @@ public class AlleyChuteDirector : MonoBehaviour
                     break;
             }
         }
+    }
+
+    // Where an item from this chute comes to rest if nobody swipes it: on the
+    // street in front of the chests, pulled in a little from the outer chutes.
+    Vector3 StreetSpot(Vector3 origin) => new Vector3(origin.x * streetSpread, streetY, streetZ);
+
+    // 0 above approachY, easing to 1 at the ground. Eased out, so the item is
+    // already clear of the chests by the time it is level with their lids.
+    float ApproachFraction(float y)
+    {
+        float k = Mathf.Clamp01(Mathf.InverseLerp(approachY, groundY, y));
+        return 1f - (1f - k) * (1f - k);
     }
 
     void Recycle(int index)
