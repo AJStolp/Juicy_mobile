@@ -13,11 +13,11 @@ public class HeistSaveTests
         rules.AddGear(GearKind.Drill, 2);
         rules.Trash(ItemKind.Bomb);
 
-        string json = HeistSave.Capture(vault, rules).ToJson();
+        string json = HeistSave.Capture(vault, rules, new ClueRules(vault, 1)).ToJson();
 
         var vault2 = new VaultProgress { TurnsByHeist = new[] { 5 } };
         var rules2 = new HeistSortRules();
-        HeistSave.FromJson(json).Apply(vault2, rules2);
+        HeistSave.FromJson(json).Apply(vault2, rules2, new ClueRules(vault2, 2));
         Assert.AreEqual(2, vault2.Heist);
         Assert.AreEqual(2, vault2.Stage);
         Assert.AreEqual(3, vault2.Turns);

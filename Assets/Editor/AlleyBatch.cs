@@ -151,13 +151,14 @@ public static class AlleyBatch
     }
 
     // Checks that a save carries over: writes a known save, enters Play as a
-    // normal player, reads back the vault, cash, gear and door, then puts the
+    // normal player, reads back the vault, cash, gear, clues and door, then puts the
     // real save back. Result in /tmp/juicy-save-check.txt. Works in batch mode
     // or, through the flag below, in the open editor.
     //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck
     const string SaveKey = "Juicy.HeistSave";
     const string SaveCheckReport = "/tmp/juicy-save-check.txt";
-    const string Planted = "{\"heist\":1,\"stage\":5,\"turns\":4,\"balance\":54321.0,\"gear\":[2,0,1,1]}";
+    const string Planted = "{\"heist\":1,\"stage\":5,\"turns\":4,\"balance\":54321.0,\"gear\":[2,0,1,1]," +
+        "\"clueSeed\":77,\"clueCycle\":3,\"clueSymbols\":[6,2],\"clueTiers\":[3,0]}";
 
     public static void SaveCheck()
     {
@@ -198,6 +199,7 @@ public static class AlleyBatch
             var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
             var vault = director.Vault;
             var rules = director.Rules;
+            var clues = director.Clues;
             int hiddenBolts = 0;
             foreach (var t in door.GetComponentsInChildren<UnityEngine.Transform>(true))
                 if (t.name.StartsWith("Bolt_") && !t.gameObject.activeSelf) hiddenBolts++;
@@ -205,11 +207,15 @@ public static class AlleyBatch
             // show five locked: popped or slid bolts, a turned ring, lit lamps.
             int locked = door.LockedShown();
             bool ok = vault.Heist == 1 && vault.Stage == 5 && vault.Turns == 4 && rules.Balance == 54321d &&
-                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5;
-            System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") + " vault " + AlleySceneBuilder.VaultOption +
+                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5 &&
+                clues.Count == 2 && clues.Clues[0].Symbol == 6 && clues.Clues[0].Tier == 3 &&
+                clues.Clues[1].Symbol == 2 && clues.Clues[1].Tier == 0 && clues.Seed == 77 && clues.Cycle == 3 && !clues.HackDue;
+            System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") +
                 " heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage +
                 " balance " + rules.Balance + " dynamite " + rules.GearCount(GearKind.Dynamite) + " drill " + rules.GearCount(GearKind.Drill) +
-                " bribe " + rules.GearCount(GearKind.Bribe) + " bolts popped " + hiddenBolts + " stages shown locked " + locked + "\n");
+                " bribe " + rules.GearCount(GearKind.Bribe) + " bolts popped " + hiddenBolts + " stages shown locked " + locked +
+                " clues restored " + clues.Count + "/" + clues.CluesNeeded + " symbols " + string.Join(",", clues.SymbolsSnapshot()) +
+                " tiers " + string.Join(",", clues.TiersSnapshot()) + " cycle " + clues.Cycle + " seed " + clues.Seed + "\n");
             SessionState.SetInt("JuicySaveCheck", 2);
             EditorApplication.isPlaying = false;
             return;
