@@ -185,39 +185,46 @@ public static class AlleyBatch
         }
     }
 
-    // Plays two clue trips from a fresh save and saves every frame, for the
-    // mp4s and the stills: Option A (notebook) on a tier 0 leg with no
-    // dynamite, so he shoves; then Option B (word sign) on a tier 3 leg with
-    // one stick, so he blasts. Frames at 30 a second land in
-    // /tmp/juicy-clue-trip-A and -B (frame_0000.png on); the frame where each
-    // clue first shows is copied to /tmp/juicy-clue-tier0.png and
-    // /tmp/juicy-clue-tier3.png; /tmp/juicy-clue-trip.txt has the trip log,
-    // dynamite and vault before and after. The real save is put back after.
+    // Plays the clue trip for each way of finding a clue (Juicy/Alley/Clues),
+    // from an empty cycle, with the hack switched off so nothing interrupts.
+    // Per option: trip 1 at tier 0 holding one stick of dynamite (spent on
+    // the rub and under the prop, kept by the torch), trip 2 at tier 3 with
+    // none, recorded frame by frame at 30 a second with 4 seconds of the next
+    // leg after it, then trip 3 at tier 1. With the sort paused straight after,
+    // the home view is saved with the 3 clues in it, and each clue's size on
+    // the 1080x1920 frame is measured. Frames land in /tmp/juicy-clue-trip-1,
+    // -2 and -3, stills at /tmp/juicy-clue-home-1.png (-2, -3), the report in
+    // /tmp/juicy-clue-trip.txt. The real save and pick are put back after.
     // Make each mp4 with:
-    //   ffmpeg -framerate 30 -i /tmp/juicy-clue-trip-A/frame_%04d.png -pix_fmt yuv420p /tmp/juicy-clue-trip-A.mp4
+    //   ffmpeg -framerate 30 -i /tmp/juicy-clue-trip-1/frame_%04d.png -pix_fmt yuv420p /tmp/juicy-clue-trip-1.mp4
     //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.ClueTrip
     const string ClueTripReport = "/tmp/juicy-clue-trip.txt";
-    static readonly string[] ClueTripDirs = { "/tmp/juicy-clue-trip-A", "/tmp/juicy-clue-trip-B" };
+    static readonly ClueFind[] ClueOptions = { ClueFind.WallRub, ClueFind.TorchReveal, ClueFind.UnderProp };
+    static readonly int[] ClueTiers = { 0, ClueRules.MaxTier, 1 };
+    const int ClueTailFrames = 120;
     static UnityEngine.RenderTexture clueFrame;
     static int clueFrameIndex;
     static int clueLastFrame;
-    static bool clueStillTaken;
+    static int clueTail;
     static readonly System.Text.StringBuilder clueLog = new System.Text.StringBuilder();
+
+    static string ClueDir(int option) => "/tmp/juicy-clue-trip-" + (option + 1);
 
     public static void ClueTrip()
     {
         OpenAlley();
         System.IO.File.Delete("/tmp/juicy-alley-bot");
-        foreach (string dir in ClueTripDirs)
+        for (int i = 0; i < ClueOptions.Length; i++)
         {
-            if (System.IO.Directory.Exists(dir)) System.IO.Directory.Delete(dir, true);
-            System.IO.Directory.CreateDirectory(dir);
+            if (System.IO.Directory.Exists(ClueDir(i))) System.IO.Directory.Delete(ClueDir(i), true);
+            System.IO.Directory.CreateDirectory(ClueDir(i));
         }
         System.IO.File.Delete(ClueTripReport);
         SessionState.SetString("JuicyClueBackup", UnityEngine.PlayerPrefs.GetString(SaveKey, ""));
-        SessionState.SetInt("JuicyClueKeeper", (int)UnityEngine.Object.FindAnyObjectByType<AlleyClueTrip>().Keeper);
+        SessionState.SetInt("JuicyClueFind", (int)UnityEngine.Object.FindAnyObjectByType<AlleyClueTrip>().Find);
         UnityEngine.PlayerPrefs.DeleteKey(SaveKey);
         UnityEngine.PlayerPrefs.Save();
+        // Step encodes option * 10 + stage; 1 starts the first option.
         SessionState.SetInt("JuicyClueTrip", 1);
         EditorApplication.update += ClueTripTick;
         EditorApplication.isPlaying = true;
@@ -232,83 +239,155 @@ public static class AlleyBatch
     static void ClueTripTick()
     {
         int step = SessionState.GetInt("JuicyClueTrip", 0);
-        var trip = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyClueTrip>() : null;
-        var director = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>() : null;
-        if ((step == 1 || step == 3) && trip != null && director != null && UnityEngine.Time.frameCount > 5 && !trip.Running)
+        if (step == 99)
         {
-            bool first = step == 1;
-            if (first)
-            {
-                UnityEngine.Time.captureFramerate = 30;
-                clueFrame = new UnityEngine.RenderTexture(1080, 1920, 24);
-                UnityEngine.Camera.main.targetTexture = clueFrame;
-                clueLog.Clear();
-            }
-            AlleySceneBuilder.SetClueKeeper(first ? ClueKeeper.Notebook : ClueKeeper.WordSign);
-            var rules = director.Rules;
-            rules.AddGear(GearKind.Dynamite, (first ? 0 : 1) - rules.GearCount(GearKind.Dynamite));
-            clueLog.AppendLine((first ? "A" : "B") + " before: keeper " + trip.Keeper + " dynamite " + rules.GearCount(GearKind.Dynamite) +
-                " vault stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " clues " + director.Clues.Count);
-            clueFrameIndex = 0;
-            clueLastFrame = -1;
-            clueStillTaken = false;
-            trip.Begin(first ? 0 : ClueRules.MaxTier);
-            SessionState.SetInt("JuicyClueTrip", step + 1);
-            return;
-        }
-        if ((step == 2 || step == 4) && trip != null && director != null)
-        {
-            bool first = step == 2;
-            if (UnityEngine.Time.frameCount != clueLastFrame)
-            {
-                clueLastFrame = UnityEngine.Time.frameCount;
-                string frame = ClueTripDirs[first ? 0 : 1] + "/frame_" + clueFrameIndex.ToString("0000") + ".png";
-                SaveFrame(frame);
-                clueFrameIndex++;
-                if (trip.Revealing && !clueStillTaken)
-                {
-                    clueStillTaken = true;
-                    System.IO.File.Copy(frame, first ? "/tmp/juicy-clue-tier0.png" : "/tmp/juicy-clue-tier3.png", true);
-                    clueLog.AppendLine((first ? "A" : "B") + " still at frame " + (clueFrameIndex - 1) + ", tier " + trip.RevealTier);
-                }
-            }
-            if (trip.Running) return;
-            var rules = director.Rules;
-            clueLog.AppendLine((first ? "A" : "B") + " after: keeper " + trip.Keeper + " dynamite " + rules.GearCount(GearKind.Dynamite) +
-                " vault stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " clues " + director.Clues.Count +
-                " frames " + clueFrameIndex + " sort paused " + director.Paused);
-            if (first)
-            {
-                SessionState.SetInt("JuicyClueTrip", 3);
-                return;
-            }
-            clueLog.AppendLine("saved " + UnityEngine.PlayerPrefs.GetString(SaveKey, "none"));
-            clueLog.AppendLine("trip log:");
-            foreach (string line in trip.Log) clueLog.AppendLine("  " + line);
-            System.IO.File.WriteAllText(ClueTripReport, clueLog.ToString());
-            UnityEngine.Camera.main.targetTexture = null;
-            UnityEngine.Time.captureFramerate = 0;
-            SessionState.SetInt("JuicyClueTrip", 5);
-            EditorApplication.isPlaying = false;
-            return;
-        }
-        if (step == 5 && !EditorApplication.isPlaying)
-        {
+            if (EditorApplication.isPlaying) return;
             SessionState.SetInt("JuicyClueTrip", 0);
             EditorApplication.update -= ClueTripTick;
             if (clueFrame != null) clueFrame.Release();
             clueFrame = null;
-            AlleySceneBuilder.SetClueKeeper((ClueKeeper)SessionState.GetInt("JuicyClueKeeper", 0));
+            AlleySceneBuilder.SetClueFind((ClueFind)SessionState.GetInt("JuicyClueFind", 0));
             string backup = SessionState.GetString("JuicyClueBackup", "");
             if (backup.Length > 0) UnityEngine.PlayerPrefs.SetString(SaveKey, backup);
             else UnityEngine.PlayerPrefs.DeleteKey(SaveKey);
             UnityEngine.PlayerPrefs.Save();
             if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(0);
+            return;
+        }
+        if (!EditorApplication.isPlaying) return;
+        var trip = UnityEngine.Object.FindAnyObjectByType<AlleyClueTrip>();
+        var director = UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>();
+        if (trip == null || director == null || director.Clues == null || UnityEngine.Time.frameCount <= 5) return;
+        int option = (step - 1) / 10;
+        int stage = (step - 1) % 10;
+        ClueFind how = ClueOptions[option];
+        string name = (option + 1) + " " + how;
+        var rules = director.Rules;
+
+        if (stage == 0)
+        {
+            if (option == 0)
+            {
+                UnityEngine.Time.captureFramerate = 30;
+                clueFrame = new UnityEngine.RenderTexture(1080, 1920, 24);
+                UnityEngine.Camera.main.targetTexture = clueFrame;
+                clueLog.Clear();
+                var hack = UnityEngine.Object.FindAnyObjectByType<AlleyHack>();
+                if (hack != null) hack.enabled = false;
+            }
+            if (trip.Running) return;
+            AlleySceneBuilder.SetClueFind(how);
+            director.Clues.Restore(director.Clues.Seed, 0, new int[0], new int[0]);
+            trip.ShowFound();
+            director.Paused = false;
+            clueLog.AppendLine("option " + name + " before: vault stage " + director.Vault.Stage + " turns " + director.Vault.Turns +
+                " clues " + director.Clues.Count + "/" + director.Clues.CluesNeeded);
+        }
+        // Trips 1 to 3 start on stages 0, 2 and 5; 3 records trip 2 and 4 its tail.
+        if ((stage == 0 || stage == 2 || stage == 5) && !trip.Running)
+        {
+            int trip_ = stage == 0 ? 0 : stage == 2 ? 1 : 2;
+            rules.AddGear(GearKind.Dynamite, (trip_ == 0 ? 1 : 0) - rules.GearCount(GearKind.Dynamite));
+            clueLog.AppendLine("  trip " + (trip_ + 1) + " tier " + ClueTiers[trip_] + " dynamite before " + rules.GearCount(GearKind.Dynamite));
+            if (trip_ == 1)
+            {
+                clueFrameIndex = 0;
+                clueLastFrame = -1;
+                clueTail = 0;
+            }
+            trip.Begin(ClueTiers[trip_]);
+            SessionState.SetInt("JuicyClueTrip", step + 1);
+            return;
+        }
+        if (stage == 1 || stage == 6)
+        {
+            if (trip.Running) return;
+            clueLog.AppendLine("  after: dynamite " + rules.GearCount(GearKind.Dynamite) + " vault stage " + director.Vault.Stage + " turns " + director.Vault.Turns +
+                " clues " + director.Clues.Count + " sort paused " + director.Paused);
+            if (stage == 1)
+            {
+                SessionState.SetInt("JuicyClueTrip", step + 1);
+                return;
+            }
+            // Hold the alley as the trip left it and save the home view.
+            director.Paused = true;
+            SessionState.SetInt("JuicyClueTrip", step + 1);
+            return;
+        }
+        if (stage == 3 || stage == 4)
+        {
+            if (UnityEngine.Time.frameCount != clueLastFrame)
+            {
+                clueLastFrame = UnityEngine.Time.frameCount;
+                SaveFrame(ClueDir(option) + "/frame_" + clueFrameIndex.ToString("0000") + ".png");
+                clueFrameIndex++;
+                if (stage == 4) clueTail++;
+            }
+            if (stage == 3 && !trip.Running)
+            {
+                clueLog.AppendLine("  after: dynamite " + rules.GearCount(GearKind.Dynamite) + " vault stage " + director.Vault.Stage + " turns " + director.Vault.Turns +
+                    " clues " + director.Clues.Count + " sort paused " + director.Paused + ", recording the next leg");
+                SessionState.SetInt("JuicyClueTrip", step + 1);
+            }
+            else if (stage == 4 && clueTail >= ClueTailFrames)
+            {
+                clueLog.AppendLine("  recorded " + clueFrameIndex + " frames, sort paused at the end " + director.Paused + ", spawned " + director.Spawned);
+                SessionState.SetInt("JuicyClueTrip", step + 1);
+            }
+            return;
+        }
+        if (stage == 7)
+        {
+            string still = "/tmp/juicy-clue-home-" + (option + 1) + ".png";
+            SaveFrame(still);
+            clueLog.AppendLine("  home still " + still + ", clues " + director.Clues.Count + " symbols " + string.Join(",", director.Clues.SymbolsSnapshot()) +
+                " tiers " + string.Join(",", director.Clues.TiersSnapshot()));
+            foreach (string line in MeasureMarks(trip)) clueLog.AppendLine("    " + line);
+            clueLog.AppendLine("  saved " + UnityEngine.PlayerPrefs.GetString(SaveKey, "none"));
+            if (option + 1 < ClueOptions.Length)
+            {
+                SessionState.SetInt("JuicyClueTrip", (option + 1) * 10 + 1);
+                return;
+            }
+            clueLog.AppendLine("trip log:");
+            foreach (string line in trip.Log) clueLog.AppendLine("  " + line);
+            System.IO.File.WriteAllText(ClueTripReport, clueLog.ToString());
+            UnityEngine.Camera.main.targetTexture = null;
+            UnityEngine.Time.captureFramerate = 0;
+            SessionState.SetInt("JuicyClueTrip", 99);
+            EditorApplication.isPlaying = false;
         }
     }
 
+    // Each shown clue glyph's size on the 1080x1920 frame, from the sort
+    // camera, and whether the sort camera sees it unblocked at its center.
+    static System.Collections.Generic.List<string> MeasureMarks(AlleyClueTrip trip)
+    {
+        var lines = new System.Collections.Generic.List<string>();
+        var camera = UnityEngine.Camera.main;
+        foreach (ClueSpot spot in trip.Spots)
+        {
+            var glyph = spot.Mark != null ? spot.Mark.Glyph : null;
+            if (glyph == null || !glyph.gameObject.activeInHierarchy) continue;
+            glyph.ForceMeshUpdate();
+            UnityEngine.Bounds local = glyph.textBounds;
+            float minX = float.MaxValue, maxX = float.MinValue, minY = float.MaxValue, maxY = float.MinValue;
+            for (int c = 0; c < 4; c++)
+            {
+                var corner = new UnityEngine.Vector3(c % 2 == 0 ? local.min.x : local.max.x, c < 2 ? local.min.y : local.max.y, 0f);
+                var screen = camera.WorldToScreenPoint(glyph.transform.TransformPoint(corner));
+                minX = UnityEngine.Mathf.Min(minX, screen.x); maxX = UnityEngine.Mathf.Max(maxX, screen.x);
+                minY = UnityEngine.Mathf.Min(minY, screen.y); maxY = UnityEngine.Mathf.Max(maxY, screen.y);
+            }
+            bool inFrame = minX >= 0f && maxX <= camera.pixelWidth && minY >= 0f && maxY <= camera.pixelHeight;
+            lines.Add(spot.Mark.name + " glyph " + glyph.text + " " + (maxX - minX).ToString("0") + "x" + (maxY - minY).ToString("0") + " px at (" +
+                ((minX + maxX) * 0.5f).ToString("0") + ", " + (camera.pixelHeight - (minY + maxY) * 0.5f).ToString("0") + ") from top left, in frame " + inFrame);
+        }
+        return lines;
+    }
+
     // The camera renders into the 1080x1920 frame for the whole run, so the
-    // notebook canvas and the flight to it lay out at phone size.
+    // measurements and captures are at phone size.
     static void SaveFrame(string path)
     {
         var camera = UnityEngine.Camera.main;

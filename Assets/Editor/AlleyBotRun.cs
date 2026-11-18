@@ -187,8 +187,8 @@ public static class AlleyBotRun
         }
         if (trip != null)
         {
-            log.AppendLine("clue trips " + trip.Trips + " (dynamite " + trip.Blasts + ", shove " + trip.Shoves + ") skipped " + trip.Skipped +
-                " for " + rules.Leg + " legs, kept on " + trip.Keeper + ", clues " + director.Clues.Count + "/" + director.Clues.CluesNeeded +
+            log.AppendLine("clue trips " + trip.Trips + " (dynamite " + trip.Blasts + ", shove " + trip.Shoves + ", rub " + trip.Rubs + ", torch " + trip.Torches +
+                ") skipped " + trip.Skipped + " for " + rules.Leg + " legs, found by " + trip.Find + ", clues " + director.Clues.Count + "/" + director.Clues.CluesNeeded +
                 " symbols " + string.Join(",", director.Clues.SymbolsSnapshot()) + " tiers " + string.Join(",", director.Clues.TiersSnapshot()) +
                 ", sort paused " + director.Paused);
         }

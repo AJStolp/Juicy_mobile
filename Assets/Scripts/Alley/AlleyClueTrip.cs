@@ -2,26 +2,30 @@ using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
-// Where clues are kept for the player to see. A design pick, both built and
-// switchable under Juicy/Alley/Clues until Anthony picks one.
-public enum ClueKeeper { Notebook, WordSign }
+// How the raccoon finds a clue in the alley. A design pick, all three built
+// and switchable under Juicy/Alley/Clues until Anthony picks one.
+public enum ClueFind { WallRub, TorchReveal, UnderProp }
 
-// One place in the alley the raccoon visits for a clue: the prop he moves or
-// blasts, where he stands to do it, and where the clue rises.
+// One place in the alley a clue is found: the prop there, the points he walks
+// through to reach it, where he stands, the painted mark, and (under the
+// prop) how far the prop slides off it.
 [System.Serializable]
 public struct ClueSpot
 {
     public Transform Prop;
+    public Vector3[] Via;
     public Vector3 Stand;
-    public Vector3 Rise;
+    public AlleyClueMark Mark;
+    public Vector3 Slide;
 }
 
-// The trip between legs. A finished leg pauses and clears the sort (as Plinko
-// did), waits out a vault crack, then the raccoon walks from the manhole to
-// the next clue spot, shoves the prop aside or spends a stick of dynamite on
-// it, and a clue symbol rises at the clarity ClueRules gives the leg's best
-// tier. The clue flies to where clues are kept, he walks back, and the sort
-// resumes. The trip never touches the vault.
+// The trip between legs. A finished leg pauses and clears the sort, waits out
+// a vault crack, then the raccoon walks from the manhole to the next clue spot
+// and finds the clue there: he rubs the grime off a wall, lights hidden UV
+// paint with his torch, or shoves (or blasts) a prop off a painted symbol.
+// The symbol stays in the alley, in view of the sort camera, until the hack
+// clears the cycle. The leg's best tier sets how bright and how complete it
+// is. He walks back and the sort resumes. The trip never touches the vault.
 public class AlleyClueTrip : MonoBehaviour
 {
     [SerializeField] AlleyChuteDirector director;
@@ -29,88 +33,102 @@ public class AlleyClueTrip : MonoBehaviour
     [SerializeField] AlleyCameraRig cameraRig;
     [SerializeField] Animator raccoon;
     [SerializeField] StandOnSpot stand;
-    [SerializeField] ClueSpot[] spots;
+    [SerializeField] Transform torch;
+    [Tooltip("Spots for the wall rub and the torch: marks on walls and prop faces.")]
+    [SerializeField] ClueSpot[] wallSpots;
+    [Tooltip("Spots under props: marks on the ground the prop slides off.")]
+    [SerializeField] ClueSpot[] propSpots;
     [SerializeField] ParticleSystem burst;
     [SerializeField] Light flash;
-    [SerializeField] Material symbolMaterial;
-    [SerializeField] AlleyClueNotebook notebook;
-    [SerializeField] AlleyWordSign sign;
-    [SerializeField] ClueKeeper keeper = ClueKeeper.Notebook;
+    [SerializeField] Light uvLight;
+    [SerializeField] ClueFind find = ClueFind.WallRub;
     [Tooltip("Metres per second. There is no walk clip yet, so he slides on the idle.")]
-    [SerializeField] float walkSpeed = 1.3f;
+    [SerializeField] float walkSpeed = 1.8f;
     [SerializeField] float turnTime = 0.25f;
-    [SerializeField] float revealSize = 0.9f;
-    [SerializeField] float flightTime = 0.9f;
     [SerializeField] float viewFov = 50f;
-    [SerializeField] float viewDistance = 4.2f;
+    [SerializeField] float viewDistance = 3.8f;
 
     const float FacingCamera = 180f;
+    const int RubStrokes = 3;
 
     readonly List<string> log = new List<string>();
-    Vector3[] propRest;
-    Quaternion[] propRestRotation;
-    Transform symbol;
-    Renderer symbolRenderer;
-    MaterialPropertyBlock block;
+    readonly Dictionary<Transform, Vector3> propRest = new Dictionary<Transform, Vector3>();
+    readonly Dictionary<Transform, Quaternion> propRestRotation = new Dictionary<Transform, Quaternion>();
+    int shownCycle = -1;
+    int shownCount = -1;
+    ClueFind shownFind;
 
     public bool Running { get; private set; }
     public int Trips { get; private set; }
     public int Blasts { get; private set; }
     public int Shoves { get; private set; }
+    public int Rubs { get; private set; }
+    public int Torches { get; private set; }
     public int Skipped { get; private set; }
     public IReadOnlyList<string> Log => log;
-    // Set while a clue is up, for captures of the reveal.
+    // Set while the found clue is held on camera, for captures of the reveal.
     public bool Revealing { get; private set; }
     public int RevealTier { get; private set; } = -1;
-    public ClueKeeper Keeper
+    public ClueSpot[] Spots => find == ClueFind.UnderProp ? propSpots : wallSpots;
+    public ClueFind Find
     {
-        get => keeper;
+        get => find;
         set
         {
-            keeper = value;
-            ShowKept();
+            find = value;
+            ShowFound();
         }
     }
 
-    public void Configure(AlleyChuteDirector chute, AlleyVaultDoor door, AlleyCameraRig rig, Animator body, StandOnSpot feet,
-        ClueSpot[] places, ParticleSystem blast, Light blastFlash, Material symbolLook, AlleyClueNotebook book, AlleyWordSign wordSign)
+    public void Configure(AlleyChuteDirector chute, AlleyVaultDoor door, AlleyCameraRig rig, Animator body, StandOnSpot feet, Transform torchTip,
+        ClueSpot[] walls, ClueSpot[] props, ParticleSystem blast, Light blastFlash, Light uv)
     {
         director = chute;
         vaultDoor = door;
         cameraRig = rig;
         raccoon = body;
         stand = feet;
-        spots = places;
+        torch = torchTip;
+        wallSpots = walls;
+        propSpots = props;
         burst = blast;
         flash = blastFlash;
-        symbolMaterial = symbolLook;
-        notebook = book;
-        sign = wordSign;
+        uvLight = uv;
     }
 
     void Awake()
     {
-        block = new MaterialPropertyBlock();
-        propRest = new Vector3[spots.Length];
-        propRestRotation = new Quaternion[spots.Length];
-        for (int i = 0; i < spots.Length; i++)
+        foreach (ClueSpot[] list in new[] { wallSpots, propSpots })
         {
-            if (spots[i].Prop == null) continue;
-            propRest[i] = spots[i].Prop.position;
-            propRestRotation[i] = spots[i].Prop.rotation;
+            foreach (ClueSpot spot in list)
+            {
+                if (spot.Prop == null || propRest.ContainsKey(spot.Prop)) continue;
+                propRest[spot.Prop] = spot.Prop.position;
+                propRestRotation[spot.Prop] = spot.Prop.rotation;
+            }
         }
         if (flash != null) flash.intensity = 0f;
+        if (uvLight != null) uvLight.intensity = 0f;
     }
 
     void Start()
     {
         director.Rules.LegAdvanced += OnLegAdvanced;
-        ShowKept();
+        ShowFound();
     }
 
     void OnDestroy()
     {
         if (director != null && director.Rules != null) director.Rules.LegAdvanced -= OnLegAdvanced;
+    }
+
+    // A hack clears the cycle, and a save restores one, outside the trip, so
+    // the alley follows the cycle whenever it changes.
+    void Update()
+    {
+        if (Running || director == null || director.Clues == null) return;
+        ClueRules clues = director.Clues;
+        if (clues.Cycle != shownCycle || clues.Count != shownCount || find != shownFind) ShowFound();
     }
 
     void OnLegAdvanced(int leg, int chutes)
@@ -124,8 +142,7 @@ public class AlleyClueTrip : MonoBehaviour
         if (Running) return;
         if (director.Clues.HackDue)
         {
-            // The cycle is full and the hack at the keypad (the next ticket)
-            // has not run, so there is no clue to find this leg.
+            // The cycle is full and the hack has not run yet.
             Skipped++;
             Note("no trip: cycle full " + director.Clues.Count + "/" + director.Clues.CluesNeeded + ", hack due");
             return;
@@ -133,23 +150,47 @@ public class AlleyClueTrip : MonoBehaviour
         StartCoroutine(Trip(tier));
     }
 
-    int CoverSeed => director.Clues.Seed * 31 + director.Clues.Cycle * 7;
+    // Which spot the clue at this place in the cycle is found at. Each cycle
+    // starts one spot further on, so the alley does not repeat itself.
+    int SpotIndex(int cycle, int index, int count) => count == 0 ? 0 : (cycle + index) % count;
 
-    // Shows the clues kept so far on the chosen keeper and hides the other.
-    public void ShowKept()
+    // Puts the alley in step with the cycle: the clues found so far stay where
+    // they were found, every other spot is unfound, and props sit back at rest
+    // unless a clue under them was found.
+    public void ShowFound()
     {
         if (director == null || director.Clues == null) return;
-        bool book = keeper == ClueKeeper.Notebook;
-        if (notebook != null)
+        ClueRules clues = director.Clues;
+        foreach (var pair in propRest) pair.Key.SetPositionAndRotation(pair.Value, propRestRotation[pair.Key]);
+        ClueSpot[] active = Spots;
+        foreach (ClueSpot[] list in new[] { wallSpots, propSpots })
         {
-            notebook.SetVisible(book);
-            if (book) notebook.Show(director.Clues.Clues, CoverSeed);
+            if (list == active) continue;
+            foreach (ClueSpot spot in list)
+            {
+                if (spot.Mark == null) continue;
+                spot.Mark.Hide(ClueFind.TorchReveal);
+            }
         }
-        if (sign != null)
+        var found = new int[active.Length];
+        for (int i = 0; i < found.Length; i++) found[i] = -1;
+        for (int k = 0; k < clues.Count; k++) found[SpotIndex(clues.Cycle, k, active.Length)] = k;
+        for (int i = 0; i < active.Length; i++)
         {
-            if (book) sign.HideClues();
-            else sign.ShowClues(director.Clues.Clues, CoverSeed);
+            ClueSpot spot = active[i];
+            if (spot.Mark == null) continue;
+            if (found[i] < 0)
+            {
+                spot.Mark.Hide(find);
+                continue;
+            }
+            Clue clue = clues.Clues[found[i]];
+            spot.Mark.ShowFound(clue.Symbol, clue.Tier, find);
+            if (find == ClueFind.UnderProp && spot.Prop != null) spot.Prop.position = propRest[spot.Prop] + spot.Slide;
         }
+        shownCycle = clues.Cycle;
+        shownCount = clues.Count;
+        shownFind = find;
     }
 
     IEnumerator Trip(int tier)
@@ -161,10 +202,11 @@ public class AlleyClueTrip : MonoBehaviour
         while (vaultDoor != null && vaultDoor.Cracking) yield return null;
 
         ClueRules clues = director.Clues;
+        ClueSpot[] spots = Spots;
         int index = clues.Count;
-        int spotIndex = (clues.Cycle * ClueRules.CluesPerHackLater + index) % spots.Length;
+        int spotIndex = SpotIndex(clues.Cycle, index, spots.Length);
         Clue? found = clues.ClueFound(tier);
-        if (found == null)
+        if (found == null || spots.Length == 0)
         {
             Skipped++;
             director.Paused = false;
@@ -174,54 +216,186 @@ public class AlleyClueTrip : MonoBehaviour
         Clue clue = found.Value;
         director.SaveNow();
         ClueSpot spot = spots[spotIndex];
+        AlleyClueMark mark = spot.Mark;
+        ClueFind how = find;
 
         // Let a push from the leg's last vat fill finish before he sets off.
         for (float t = 0f; t < 2f && !Idle(); t += Time.deltaTime) yield return null;
 
         cameraRig.Hold(ViewPoint(spot), ViewTarget(spot), viewFov);
+        Vector3[] via = spot.Via ?? new Vector3[0];
+        foreach (Vector3 point in via) yield return Walk(point);
         yield return Walk(spot.Stand);
-        yield return Turn(Yaw(spot.Stand, spot.Rise));
+        yield return Turn(Yaw(spot.Stand, mark.Center));
 
-        bool blast = director.Rules.GearCount(GearKind.Dynamite) > 0;
-        raccoon.SetTrigger("onPushHeavy");
-        yield return new WaitForSeconds(blast ? 0.45f : 0.35f);
+        string action;
+        bool blast = how != ClueFind.TorchReveal && director.Rules.GearCount(GearKind.Dynamite) > 0;
         if (blast)
         {
             director.Rules.AddGear(GearKind.Dynamite, -1);
             Blasts++;
-            Blast(spot);
+            action = "dynamite";
         }
-        else Shoves++;
-        StartCoroutine(Jolt(spotIndex, spot, blast));
-        yield return new WaitForSeconds(0.15f);
+        else if (how == ClueFind.WallRub) { Rubs++; action = "rub"; }
+        else if (how == ClueFind.TorchReveal) { Torches++; action = "torch"; }
+        else { Shoves++; action = "shove"; }
 
-        yield return Reveal(spot, clue, CoverSeed + index);
+        switch (how)
+        {
+            case ClueFind.WallRub: yield return Rub(spot, clue, blast); break;
+            case ClueFind.TorchReveal: yield return TorchUp(spot, clue); break;
+            default: yield return Uncover(spot, clue, blast); break;
+        }
+
+        // He steps aside toward the middle of the alley so the camera sees
+        // the clue, then the camera holds on it for the seconds its tier gives.
+        yield return Walk(Aside(spot));
+        yield return Turn(Yaw(stand.Spot, mark.Center));
+        Revealing = true;
+        RevealTier = clue.Tier;
+        yield return new WaitForSeconds(clue.SecondsShown);
+        Revealing = false;
         cameraRig.Release();
-        yield return Fly(index);
 
+        for (int i = via.Length - 1; i >= 0; i--) yield return Walk(via[i]);
         yield return Walk(stand.Home);
         yield return Turn(FacingCamera);
         stand.SetSpot(stand.Home, false);
         while (!cameraRig.Settled) yield return null;
 
         Trips++;
-        Note("clue trip " + Trips + ": " + Name(spot) + ", " + (blast ? "dynamite" : "shove") + ", symbol " + clue.Symbol + " " + ClueSymbols.Name(clue.Symbol) +
-            " tier " + clue.Tier + " (covered " + clue.Covered.ToString("0.00") + ", shown " + clue.SecondsShown.ToString("0.00") + "s), kept on " + keeper +
+        Note("clue trip " + Trips + ": " + how + " at " + Name(spot) + ", " + action + ", symbol " + clue.Symbol + " " + AlleyHack.Glyphs[clue.Symbol] +
+            " tier " + clue.Tier + " (worn " + clue.Covered.ToString("0.00") + ", paint " + AlleyClueMark.Strength(clue.Tier, how).ToString("0.00") + ")" +
             ", clues " + clues.Count + "/" + clues.CluesNeeded + ", took " + (Time.time - started).ToString("0.0") + "s");
+        ShowFound();
         director.Paused = false;
         Running = false;
     }
 
-    static string Name(ClueSpot spot) => spot.Prop != null ? spot.Prop.name : "spot";
+    Vector3 Aside(ClueSpot spot)
+    {
+        Vector3 toMiddle = new Vector3(stand.Home.x - spot.Stand.x, 0f, 0f);
+        float side = Mathf.Abs(toMiddle.x) > 0.05f ? Mathf.Sign(toMiddle.x) : -1f;
+        return spot.Stand + new Vector3(side * 0.6f, 0f, -0.15f);
+    }
+
+    static string Name(ClueSpot spot) => spot.Mark != null ? spot.Mark.name : "spot";
 
     void Note(string line) => log.Add(Time.time.ToString("0") + "s " + line);
 
     bool Idle() => raccoon == null || (raccoon.GetCurrentAnimatorStateInfo(0).IsName("Torch_Idle") && !raccoon.IsInTransition(0));
 
-    Vector3 ViewTarget(ClueSpot spot) => Vector3.Lerp(spot.Stand + Vector3.up * 0.6f, spot.Rise, 0.5f);
+    // Option 1: he scrubs the patch in strokes and each one wipes more mud off
+    // the stencil, down to what the tier leaves. Dynamite blows it off at once.
+    IEnumerator Rub(ClueSpot spot, Clue clue, bool blast)
+    {
+        AlleyClueMark mark = spot.Mark;
+        mark.Prepare(clue.Symbol, ClueFind.WallRub);
+        float strength = AlleyClueMark.Strength(clue.Tier, ClueFind.WallRub);
+        mark.Paint(strength);
+        float end = AlleyClueMark.GrimeLeft(clue.Covered);
+        if (blast)
+        {
+            raccoon.SetTrigger("onPushHeavy");
+            yield return new WaitForSeconds(0.45f);
+            Blast(mark.Center);
+            mark.SetGrime(end);
+            yield return new WaitForSeconds(0.3f);
+            yield break;
+        }
+        float cutoff = 0f;
+        for (int stroke = 0; stroke < RubStrokes; stroke++)
+        {
+            raccoon.ResetTrigger("onPushLight");
+            raccoon.SetTrigger("onPushLight");
+            float from = cutoff;
+            float to = Mathf.Lerp(0f, end, (stroke + 1f) / RubStrokes);
+            for (float t = 0f; t < 0.5f; t += Time.deltaTime)
+            {
+                cutoff = Mathf.Lerp(from, to, Mathf.SmoothStep(0f, 1f, t / 0.5f));
+                mark.SetGrime(cutoff);
+                yield return null;
+            }
+            cutoff = to;
+            mark.SetGrime(cutoff);
+            yield return new WaitForSeconds(0.15f);
+        }
+    }
+
+    // Option 2: he holds the torch up to the wall, its flame turns UV and the
+    // hidden paint blazes, then settles to the faint glow it keeps.
+    IEnumerator TorchUp(ClueSpot spot, Clue clue)
+    {
+        AlleyClueMark mark = spot.Mark;
+        mark.Prepare(clue.Symbol, ClueFind.TorchReveal);
+        mark.SetGrime(AlleyClueMark.GrimeLeft(clue.Covered));
+        raccoon.ResetTrigger("onPushLight");
+        raccoon.SetTrigger("onPushLight");
+        float rest = AlleyClueMark.Strength(clue.Tier, ClueFind.TorchReveal);
+        float restGlow = AlleyClueMark.RestGlow(clue.Tier);
+        const float rise = 0.9f;
+        for (float t = 0f; t < rise; t += Time.deltaTime)
+        {
+            float k = Mathf.SmoothStep(0f, 1f, t / rise);
+            PlaceUv(mark, 1.6f * k);
+            mark.Paint(rest * 1.8f * k);
+            mark.SetGlow(restGlow * 6f * k);
+            yield return null;
+        }
+        const float settle = 0.8f;
+        for (float t = 0f; t < settle; t += Time.deltaTime)
+        {
+            float k = t / settle;
+            PlaceUv(mark, 1.6f * (1f - k));
+            mark.Paint(Mathf.Lerp(rest * 1.8f, rest, k));
+            mark.SetGlow(Mathf.Lerp(restGlow * 6f, restGlow, k));
+            yield return null;
+        }
+        PlaceUv(mark, 0f);
+        mark.Paint(rest);
+        mark.SetGlow(restGlow);
+    }
+
+    void PlaceUv(AlleyClueMark mark, float intensity)
+    {
+        if (uvLight == null) return;
+        Vector3 from = torch != null ? torch.position : stand.transform.position + Vector3.up;
+        uvLight.transform.position = Vector3.Lerp(from, mark.Center, 0.35f);
+        uvLight.intensity = intensity;
+    }
+
+    // Option 3: he shoves the prop off the painted mark, or blasts it off,
+    // and it stays moved until the hack clears the cycle.
+    IEnumerator Uncover(ClueSpot spot, Clue clue, bool blast)
+    {
+        AlleyClueMark mark = spot.Mark;
+        raccoon.SetTrigger("onPushHeavy");
+        yield return new WaitForSeconds(blast ? 0.45f : 0.35f);
+        if (blast) Blast(mark.Center);
+        mark.Prepare(clue.Symbol, ClueFind.UnderProp);
+        mark.SetGrime(AlleyClueMark.GrimeLeft(clue.Covered));
+        mark.Paint(AlleyClueMark.Strength(clue.Tier, ClueFind.UnderProp));
+        Transform prop = spot.Prop;
+        if (prop == null) yield break;
+        Vector3 rest = propRest[prop];
+        Quaternion restRotation = propRestRotation[prop];
+        Vector3 axis = Vector3.Cross(Vector3.up, spot.Slide.sqrMagnitude > 1e-4f ? spot.Slide.normalized : Vector3.forward);
+        float time = blast ? 0.45f : 0.8f;
+        for (float t = 0f; t < time; t += Time.deltaTime)
+        {
+            float k = blast ? 1f - (1f - t / time) * (1f - t / time) : Mathf.SmoothStep(0f, 1f, t / time);
+            float hop = blast ? 0.25f * Mathf.Sin(k * Mathf.PI) : 0f;
+            prop.position = rest + spot.Slide * k + Vector3.up * hop;
+            prop.rotation = Quaternion.AngleAxis((blast ? 12f : 4f) * Mathf.Sin(k * Mathf.PI), axis) * restRotation;
+            yield return null;
+        }
+        prop.SetPositionAndRotation(rest + spot.Slide, restRotation);
+    }
+
+    Vector3 ViewTarget(ClueSpot spot) => Vector3.Lerp(spot.Stand + Vector3.up * 0.6f, spot.Mark.Center, 0.55f);
 
     // Back toward the home camera from the spot and a little above it, so the
-    // raccoon walking in and the clue rising both stay in frame.
+    // raccoon walking in and the clue both stay in frame.
     Vector3 ViewPoint(ClueSpot spot)
     {
         Vector3 target = ViewTarget(spot);
@@ -229,7 +403,7 @@ public class AlleyClueTrip : MonoBehaviour
         Vector3 back = home - target;
         back.y = 0f;
         back = back.sqrMagnitude > 0.001f ? back.normalized : Vector3.back;
-        return target + back * viewDistance + Vector3.up * 0.9f;
+        return target + back * viewDistance + Vector3.up * 1.8f;
     }
 
     static float Yaw(Vector3 from, Vector3 to)
@@ -242,6 +416,7 @@ public class AlleyClueTrip : MonoBehaviour
     IEnumerator Walk(Vector3 to)
     {
         Vector3 from = stand.Spot;
+        to.y = from.y;
         yield return Turn(Yaw(from, to));
         raccoon.SetBool(AlleyReactions.WalkParameter, true);
         float distance = Vector3.Distance(new Vector3(from.x, 0f, from.z), new Vector3(to.x, 0f, to.z));
@@ -269,42 +444,11 @@ public class AlleyClueTrip : MonoBehaviour
         body.rotation = to;
     }
 
-    // The prop gives: a shove slides and tips it away from him, a blast
-    // throws it harder. It settles back while he walks home.
-    IEnumerator Jolt(int index, ClueSpot spot, bool blast)
+    void Blast(Vector3 at)
     {
-        Transform prop = spot.Prop;
-        if (prop == null) yield break;
-        Vector3 away = spot.Rise - spot.Stand;
-        away.y = 0f;
-        away = away.sqrMagnitude > 1e-4f ? away.normalized : Vector3.forward;
-        float push = blast ? 0.32f : 0.16f;
-        Vector3 axis = Vector3.Cross(Vector3.up, away);
-        Vector3 rest = propRest[index];
-        Quaternion restRotation = propRestRotation[index];
-        for (float t = 0f; t < 0.35f; t += Time.deltaTime)
-        {
-            float k = Mathf.Sin(Mathf.Clamp01(t / 0.35f) * Mathf.PI * 0.5f);
-            prop.position = rest + away * (push * k) + Vector3.up * (blast ? 0.12f * Mathf.Sin(k * Mathf.PI) : 0f);
-            prop.rotation = Quaternion.AngleAxis((blast ? 14f : 7f) * Mathf.Sin(k * Mathf.PI), axis) * restRotation;
-            yield return null;
-        }
-        while (Running && Vector3.Distance(stand.Spot, spot.Stand) < 0.05f) yield return null;
-        Vector3 moved = prop.position;
-        for (float t = 0f; t < 1.2f; t += Time.deltaTime)
-        {
-            prop.position = Vector3.Lerp(moved, rest, Mathf.SmoothStep(0f, 1f, t / 1.2f));
-            yield return null;
-        }
-        prop.SetPositionAndRotation(rest, restRotation);
-    }
-
-    void Blast(ClueSpot spot)
-    {
-        Vector3 at = Vector3.Lerp(spot.Stand, spot.Rise, 0.7f);
         if (burst != null)
         {
-            burst.transform.position = new Vector3(at.x, Mathf.Max(0.3f, Mathf.Min(at.y, spot.Rise.y)), at.z);
+            burst.transform.position = new Vector3(at.x, Mathf.Max(0.3f, at.y), at.z);
             burst.Clear(true);
             burst.Play(true);
         }
@@ -322,122 +466,5 @@ public class AlleyClueTrip : MonoBehaviour
             yield return null;
         }
         flash.intensity = 0f;
-    }
-
-    void EnsureSymbol()
-    {
-        if (symbol != null) return;
-        GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        quad.name = "Clue_Symbol";
-        Destroy(quad.GetComponent<Collider>());
-        quad.transform.SetParent(transform, false);
-        symbolRenderer = quad.GetComponent<Renderer>();
-        symbolRenderer.sharedMaterial = symbolMaterial;
-        symbolRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        symbolRenderer.receiveShadows = false;
-        symbol = quad.transform;
-        symbol.gameObject.SetActive(false);
-    }
-
-    void FaceCamera(Transform t)
-    {
-        Camera view = Camera.main;
-        if (view != null) t.rotation = Quaternion.LookRotation(t.position - view.transform.position, Vector3.up);
-    }
-
-    // The clue rises out of the spot and holds for the seconds its tier gives.
-    IEnumerator Reveal(ClueSpot spot, Clue clue, int seed)
-    {
-        EnsureSymbol();
-        symbolRenderer.GetPropertyBlock(block);
-        block.SetTexture("_BaseMap", ClueSymbols.Texture(clue.Symbol, clue.Covered, seed));
-        block.SetColor("_BaseColor", Color.white * 1.4f);
-        symbolRenderer.SetPropertyBlock(block);
-        symbol.gameObject.SetActive(true);
-        Vector3 low = spot.Rise - Vector3.up * 0.45f;
-        const float rise = 0.4f;
-        for (float t = 0f; t < rise; t += Time.deltaTime)
-        {
-            float k = Mathf.SmoothStep(0f, 1f, t / rise);
-            symbol.position = Vector3.Lerp(low, spot.Rise, k);
-            symbol.localScale = Vector3.one * (revealSize * (0.2f + 0.8f * k) * (1f + 0.15f * Mathf.Sin(k * Mathf.PI)));
-            FaceCamera(symbol);
-            yield return null;
-        }
-        Revealing = true;
-        RevealTier = clue.Tier;
-        for (float t = 0f; t < clue.SecondsShown; t += Time.deltaTime)
-        {
-            symbol.position = spot.Rise + Vector3.up * (0.03f * Mathf.Sin(t * 4f));
-            symbol.localScale = Vector3.one * revealSize;
-            FaceCamera(symbol);
-            yield return null;
-        }
-        Revealing = false;
-    }
-
-    IEnumerator Fly(int index)
-    {
-        if (keeper == ClueKeeper.WordSign && sign != null) yield return FlyToSign(index);
-        else if (notebook != null) yield return FlyToNotebook(index);
-        symbol.gameObject.SetActive(false);
-        ShowKept();
-        if (keeper == ClueKeeper.WordSign && sign != null) sign.Land(index);
-        else if (notebook != null) notebook.Land(index);
-    }
-
-    // Option B: the symbol flies in the world onto its tile over the vault.
-    IEnumerator FlyToSign(int index)
-    {
-        Transform anchor = sign.ClueAnchor(index);
-        Vector3 from = symbol.position;
-        Vector3 startScale = symbol.localScale;
-        Quaternion startRotation = symbol.rotation;
-        for (float t = 0f; t < flightTime; t += Time.deltaTime)
-        {
-            float k = Mathf.SmoothStep(0f, 1f, t / flightTime);
-            Vector3 arc = Vector3.up * (0.8f * Mathf.Sin(k * Mathf.PI));
-            symbol.position = Vector3.Lerp(from, anchor.position, k) + arc;
-            symbol.localScale = Vector3.Lerp(startScale, anchor.lossyScale, k);
-            symbol.rotation = Quaternion.Slerp(startRotation, anchor.rotation, k);
-            yield return null;
-        }
-    }
-
-    // Option A: the symbol leaves the world for the screen and lands on its
-    // notebook slot.
-    IEnumerator FlyToNotebook(int index)
-    {
-        Camera view = Camera.main;
-        Canvas canvas = notebook.Canvas;
-        var canvasRect = (RectTransform)canvas.transform;
-        RectTransform slot = notebook.Slot(index);
-        Vector3 screen = view.WorldToScreenPoint(symbol.position);
-        Vector3 edge = view.WorldToScreenPoint(symbol.position + view.transform.right * (symbol.localScale.x * 0.5f));
-        float pixels = Mathf.Abs(edge.x - screen.x) * 2f;
-        RectTransformUtility.ScreenPointToLocalPointInRectangle(canvasRect, screen, canvas.worldCamera, out Vector2 start);
-        float startSize = pixels / Mathf.Max(0.01f, canvas.scaleFactor);
-
-        var flyer = new GameObject("Clue_Flying", typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
-        var rect = (RectTransform)flyer.transform;
-        rect.SetParent(canvasRect, false);
-        rect.anchorMin = rect.anchorMax = new Vector2(0.5f, 0.5f);
-        var image = flyer.GetComponent<UnityEngine.UI.RawImage>();
-        image.raycastTarget = false;
-        symbolRenderer.GetPropertyBlock(block);
-        image.texture = block.GetTexture("_BaseMap");
-        symbol.gameObject.SetActive(false);
-
-        for (float t = 0f; t < flightTime; t += Time.deltaTime)
-        {
-            float k = Mathf.SmoothStep(0f, 1f, t / flightTime);
-            Vector2 end = canvasRect.InverseTransformPoint(slot.position);
-            float endSize = slot.rect.width;
-            rect.anchoredPosition = Vector2.Lerp(start, end, k);
-            float size = Mathf.Lerp(startSize, endSize, k);
-            rect.sizeDelta = new Vector2(size, size);
-            yield return null;
-        }
-        Destroy(flyer);
     }
 }
