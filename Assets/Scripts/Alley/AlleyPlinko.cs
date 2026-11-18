@@ -38,7 +38,7 @@ public class AlleyPlinko : MonoBehaviour
     [Tooltip("Bleeds sideways speed, like a coin dragging on the backboard, so it hops a peg or so per row instead of ricocheting to a rail.")]
     [SerializeField] float sideDrag = 10f;
     [Tooltip("Random sideways kick on each pin strike, either way with equal odds. Without it a coin repeats the same bounce row after row and walks to a rail.")]
-    [SerializeField] float pinScatter = 0.2f;
+    [SerializeField] float pinScatter = 0.3f;
     [Tooltip("Top speed on the board, in board units per second. A slow coin hops one peg at a time; a fast one skips rows and rides the rails.")]
     [SerializeField] float maxSpeed = 0.9f;
 
