@@ -7,6 +7,11 @@ using UnityEngine;
 // quickly and grinds back slowly on a bust. Cracking the vault spins the
 // wheel, flashes the keyhole green and swings the door open on a flood of
 // light, then the door closes on a fresh vault.
+//
+// The same meter drives the graffiti facade's own door: its locking bars and
+// handle slide instead of popping (boltSlide), its wheel turns a little with
+// every stage (wheelPerStage), and a row of stage lamps can stand in for the
+// moving parts. Any part may be left out.
 public class AlleyVaultDoor : MonoBehaviour
 {
     const int Bolts = 4;
@@ -26,15 +31,26 @@ public class AlleyVaultDoor : MonoBehaviour
     [SerializeField] float creepSpeed = 1.5f;
     [SerializeField] float grindSpeed = 0.35f;
     [SerializeField] float floodIntensity = 6f;
+    [Tooltip("World offset each bolt slides to as its stage fills. Empty: bolts back out, spin and pop off.")]
+    [SerializeField] Vector3[] boltSlide = new Vector3[0];
+    [Tooltip("Degrees the wheel turns per stage. Zero: the wheel turns only with the last stage.")]
+    [SerializeField] float wheelPerStage;
+    [Tooltip("One lamp per stage, dim while waiting, brightening as it fills, full when locked.")]
+    [SerializeField] Renderer[] stageLamps = new Renderer[0];
+    [SerializeField] Color lampColor = new Color(0.35f, 1f, 0.45f);
 
     static readonly int EmissionId = Shader.PropertyToID("_EmissionColor");
     static readonly Color KeyGreen = new Color(0.35f, 1f, 0.45f);
+    const float LampIdle = 0.03f;
+    const float LampFilling = 0.6f;
+    const float LampLocked = 1.5f;
 
     VaultProgress vault;
     readonly float[] shown = new float[VaultProgress.Stages];
     readonly bool[] popped = new bool[Bolts];
     readonly float[] popTime = new float[Bolts];
     Vector3[] boltRest;
+    Vector3[] boltSlideLocal;
     Quaternion[] boltRestRotation;
     Quaternion outerRest, innerRest, wheelRest, doorRest;
     Vector3 doorRestPosition;
@@ -43,16 +59,26 @@ public class AlleyVaultDoor : MonoBehaviour
     float keyFlash;
     bool cracking;
     MaterialPropertyBlock block;
+    // Each lamp glows through its own copy of the lamp material, which turns
+    // emission on for itself.
+    Material[] lampShared = new Material[0];
+    Material[] lampOwn = new Material[0];
+    bool rested;
 
     public bool Cracking => cracking;
     public int Pops { get; private set; }
     public int Rollbacks { get; private set; }
     public int Cracks { get; private set; }
-    public Vector3 Focus => keyhole != null ? keyhole.transform.position : transform.position;
+    public Vector3 Focus => keyhole != null ? keyhole.transform.position : wheel != null ? wheel.position : transform.position;
+    bool Sliding => boltSlide != null && boltSlide.Length == bolts.Length && bolts.Length > 0;
+    // Which kind of door this is, read by the scene tools.
+    public bool FacadeSlides => Sliding;
+    public bool FacadeLamps => stageLamps != null && stageLamps.Length > 0;
 
     public void Configure(AlleyChuteDirector chute, Transform swingDoor, Transform[] cornerBolts, Transform outer, Transform inner, Transform spokeWheel,
         Renderer keyLens, Light floodLight, AlleyCameraRig rig, Vector3 outward)
     {
+        ConfigureFacade(new Vector3[0], 0f, new Renderer[0]);
         director = chute;
         door = swingDoor;
         bolts = cornerBolts;
@@ -63,6 +89,13 @@ public class AlleyVaultDoor : MonoBehaviour
         flood = floodLight;
         cameraRig = rig;
         outWorld = outward;
+    }
+
+    public void ConfigureFacade(Vector3[] slide, float degreesPerStage, Renderer[] lamps)
+    {
+        boltSlide = slide;
+        wheelPerStage = degreesPerStage;
+        stageLamps = lamps;
     }
 
     public void Bind(VaultProgress progress)
@@ -77,21 +110,93 @@ public class AlleyVaultDoor : MonoBehaviour
 
     void Awake()
     {
+        Rest();
+        if (flood != null) flood.intensity = 0f;
+    }
+
+    // Reads every part's rest pose once.
+    void Rest()
+    {
+        if (rested) return;
+        rested = true;
         block = new MaterialPropertyBlock();
         boltRest = new Vector3[bolts.Length];
+        boltSlideLocal = new Vector3[bolts.Length];
         boltRestRotation = new Quaternion[bolts.Length];
         for (int i = 0; i < bolts.Length; i++)
         {
             boltRest[i] = bolts[i].localPosition;
             boltRestRotation[i] = bolts[i].localRotation;
+            if (Sliding) boltSlideLocal[i] = bolts[i].parent.InverseTransformVector(boltSlide[i]);
         }
-        outerRest = ringOuter.localRotation;
-        innerRest = ringInner.localRotation;
-        wheelRest = wheel.localRotation;
-        doorRest = door.localRotation;
-        doorRestPosition = door.localPosition;
+        if (ringOuter != null) outerRest = ringOuter.localRotation;
+        if (ringInner != null) innerRest = ringInner.localRotation;
+        if (wheel != null) wheelRest = wheel.localRotation;
+        if (door != null)
+        {
+            doorRest = door.localRotation;
+            doorRestPosition = door.localPosition;
+        }
         doorSwingSign = OutwardSwingSign();
+        lampShared = new Material[stageLamps.Length];
+        lampOwn = new Material[stageLamps.Length];
+        for (int i = 0; i < stageLamps.Length; i++)
+        {
+            lampShared[i] = stageLamps[i].sharedMaterial;
+            lampOwn[i] = new Material(lampShared[i]) { name = lampShared[i].name + " " + i };
+            // A batch Unity run strips the keyword from the saved glow
+            // material, so the copy turns emission on itself.
+            lampOwn[i].EnableKeyword("_EMISSION");
+            stageLamps[i].sharedMaterial = lampOwn[i];
+        }
+    }
+
+    // Poses the door for a still in the editor: the given progress and the
+    // door swung open by doorDegrees. EndPreview puts every part back.
+    public void Preview(VaultProgress progress, float doorDegrees)
+    {
+        Rest();
+        vault = progress;
+        Snap();
+        SwingDoor(doorDegrees);
+        if (flood != null) flood.intensity = doorDegrees > 0f ? floodIntensity : 0f;
+    }
+
+    public void EndPreview()
+    {
+        vault = null;
+        Snap();
+        SwingDoor(0f);
+        for (int i = 0; i < bolts.Length; i++) bolts[i].gameObject.SetActive(true);
         if (flood != null) flood.intensity = 0f;
+        for (int i = 0; i < lampOwn.Length; i++)
+        {
+            stageLamps[i].sharedMaterial = lampShared[i];
+            DestroyImmediate(lampOwn[i]);
+        }
+        lampOwn = new Material[0];
+        rested = false;
+    }
+
+    // How many stages the door shows as locked, read from the parts
+    // themselves: popped or fully slid bolts, rings a quarter turned, and
+    // lamps at full glow.
+    public int LockedShown()
+    {
+        int count = 0;
+        for (int i = 0; i < bolts.Length; i++)
+        {
+            if (Sliding)
+            {
+                if ((bolts[i].localPosition - boltRest[i]).magnitude >= boltSlideLocal[i].magnitude * 0.99f) count++;
+            }
+            else if (!bolts[i].gameObject.activeSelf) count++;
+        }
+        if (ringOuter != null && Quaternion.Angle(ringOuter.localRotation, outerRest) >= 89f) count++;
+        if (ringInner != null && Quaternion.Angle(ringInner.localRotation, innerRest) >= 89f) count++;
+        foreach (Material lamp in lampOwn)
+            if (lamp.GetColor(EmissionId).maxColorComponent >= LampLocked * 0.9f * lampColor.maxColorComponent) count++;
+        return count;
     }
 
     void Start()
@@ -99,7 +204,11 @@ public class AlleyVaultDoor : MonoBehaviour
         if (director != null) Bind(director.Vault);
     }
 
-    void OnDestroy() => Unbind();
+    void OnDestroy()
+    {
+        Unbind();
+        if (Application.isPlaying) foreach (Material lamp in lampOwn) Destroy(lamp);
+    }
 
     void Unbind()
     {
@@ -208,7 +317,8 @@ public class AlleyVaultDoor : MonoBehaviour
         }
         for (int i = 0; i < Bolts; i++) popTime[i] += dt;
         keyFlash = Mathf.MoveTowards(keyFlash, 0f, dt * 1.5f);
-        door.localPosition = doorRestPosition + (grinding ? door.parent.InverseTransformVector(Random.insideUnitSphere * 0.004f) : Vector3.zero);
+        if (door != null)
+            door.localPosition = doorRestPosition + (grinding ? door.parent.InverseTransformVector(Random.insideUnitSphere * 0.004f) : Vector3.zero);
         Pose();
     }
 
@@ -217,7 +327,14 @@ public class AlleyVaultDoor : MonoBehaviour
         for (int i = 0; i < bolts.Length; i++) PoseBolt(i);
         Turn(ringOuter, outerRest, 90f * shown[4]);
         Turn(ringInner, innerRest, -90f * shown[5]);
-        Turn(wheel, wheelRest, 360f * shown[6] + wheelExtra);
+        float spin = 360f * shown[6];
+        if (wheelPerStage > 0f)
+        {
+            spin = 0f;
+            for (int s = 0; s < shown.Length; s++) spin += wheelPerStage * shown[s];
+        }
+        Turn(wheel, wheelRest, spin + wheelExtra);
+        PoseLamps();
 
         if (keyhole == null) return;
         float overall = vault != null ? (vault.Stage + vault.StageFraction) / VaultProgress.Stages : 0f;
@@ -226,9 +343,24 @@ public class AlleyVaultDoor : MonoBehaviour
         keyhole.SetPropertyBlock(block);
     }
 
+    void PoseLamps()
+    {
+        for (int s = 0; s < lampOwn.Length && s < shown.Length; s++)
+        {
+            float level = shown[s] >= 1f ? LampLocked : LampIdle + shown[s] * (LampFilling - LampIdle);
+            lampOwn[s].SetColor(EmissionId, lampColor * (level + keyFlash * 2f));
+        }
+    }
+
     void PoseBolt(int i)
     {
         Transform bolt = bolts[i];
+        if (Sliding)
+        {
+            // The facade's bars and handle stay on the door and slide.
+            bolt.localPosition = boltRest[i] + boltSlideLocal[i] * (popped[i] ? 1f : shown[i]);
+            return;
+        }
         Vector3 outLocal = bolt.parent.InverseTransformVector(outWorld.normalized);
         if (!popped[i])
         {
@@ -249,12 +381,14 @@ public class AlleyVaultDoor : MonoBehaviour
 
     void Turn(Transform part, Quaternion rest, float degrees)
     {
+        if (part == null) return;
         Vector3 axis = Quaternion.Inverse(part.parent.rotation * rest) * outWorld.normalized;
         part.localRotation = rest * Quaternion.AngleAxis(degrees, axis);
     }
 
     void SwingDoor(float degrees)
     {
+        if (door == null) return;
         Vector3 axis = Quaternion.Inverse(door.parent.rotation * doorRest) * Vector3.up;
         door.localRotation = doorRest * Quaternion.AngleAxis(degrees * doorSwingSign, axis);
     }
@@ -262,7 +396,8 @@ public class AlleyVaultDoor : MonoBehaviour
     // The door must swing out toward the street, whichever way the model faces.
     float OutwardSwingSign()
     {
-        Vector3 center = keyhole != null ? keyhole.transform.position : door.position;
+        if (door == null) return 1f;
+        Vector3 center = Focus;
         Vector3 hingeToCenter = center - door.position;
         Vector3 moved = Quaternion.AngleAxis(10f, Vector3.up) * hingeToCenter - hingeToCenter;
         return Vector3.Dot(moved, outWorld) >= 0f ? 1f : -1f;

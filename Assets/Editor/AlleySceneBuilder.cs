@@ -690,6 +690,8 @@ public static partial class AlleySceneBuilder
         Transform framing = GameObject.Find("Alley_Framing").transform;
         Reparent("Heavy_Crates", framing);
         Reparent("Vault_Padlock", framing);
+        // Read before the old door is retired, so a rewire keeps the option.
+        VaultDoorOption vaultOption = VaultOption;
         string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign" };
         for (int i = 0; i < retired.Length; i++)
         {
@@ -721,7 +723,7 @@ public static partial class AlleySceneBuilder
         AlleyCameraRig rig = EnsureCameraRig();
         AlleyReactions reactions = directorObject.AddComponent<AlleyReactions>();
         reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), rig);
-        AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig);
+        AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig, vaultOption);
         BuildPlinko(grid, director, vaultDoor, rig);
         BuildWordSign(grid, director);
 

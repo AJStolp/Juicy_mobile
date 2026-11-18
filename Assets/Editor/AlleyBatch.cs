@@ -82,6 +82,51 @@ public static class AlleyBatch
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 
+    // Switches the vault option and rewires the scene, for SaveCheck and
+    // captures on each option with Unity closed.
+    public static void UseVaultCodeDoor() { OpenAlley(); AlleySceneBuilder.UseVaultOption(VaultDoorOption.CodeDoor); }
+    public static void UseVaultFacadeDoor() { OpenAlley(); AlleySceneBuilder.UseVaultOption(VaultDoorOption.FacadeDoor); }
+    public static void UseVaultFacadeLights() { OpenAlley(); AlleySceneBuilder.UseVaultOption(VaultDoorOption.FacadeLights); }
+
+    // Renders every vault option: the street and a close look at rest, the
+    // close look with the planted save's progress (stage 5, 4 of 16 turns),
+    // and for option A the door swung open. Files are
+    // /tmp/juicy-vault-<option>-<street|close|stage5|open>.png. Leaves the
+    // option that was selected.
+    public static void VaultPreviews()
+    {
+        OpenAlley();
+        VaultDoorOption selected = AlleySceneBuilder.VaultOption;
+        var camera = UnityEngine.Camera.main;
+        var report = new System.Text.StringBuilder();
+        foreach (VaultDoorOption option in System.Enum.GetValues(typeof(VaultDoorOption)))
+        {
+            AlleySceneBuilder.UseVaultOption(option);
+            string stem = "/tmp/juicy-vault-" + option;
+            var home = camera.transform.position;
+            var homeRotation = camera.transform.rotation;
+            AlleySceneBuilder.Capture(stem + "-street.png");
+            var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
+            camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
+            camera.transform.LookAt(door.Focus);
+            AlleySceneBuilder.Capture(stem + "-close.png");
+            var progress = new VaultProgress();
+            progress.Restore(1, 5, 4);
+            door.Preview(progress, 0f);
+            AlleySceneBuilder.Capture(stem + "-stage5.png");
+            report.AppendLine(option + " stage 5 preview shows " + door.LockedShown() + " stages locked");
+            if (option == VaultDoorOption.FacadeDoor)
+            {
+                door.Preview(progress, 105f);
+                AlleySceneBuilder.Capture(stem + "-open.png");
+            }
+            door.EndPreview();
+            camera.transform.SetPositionAndRotation(home, homeRotation);
+        }
+        AlleySceneBuilder.UseVaultOption(selected);
+        System.IO.File.WriteAllText("/tmp/juicy-vault-previews.txt", report.ToString());
+    }
+
     // Renders the word sign over the vault with HEIST part spelled.
     public static void WordSignPreviews()
     {
@@ -156,13 +201,15 @@ public static class AlleyBatch
             int hiddenBolts = 0;
             foreach (var t in door.GetComponentsInChildren<UnityEngine.Transform>(true))
                 if (t.name.StartsWith("Bolt_") && !t.gameObject.activeSelf) hiddenBolts++;
-            var ring = door.transform.Find("Door/Ring_Outer").localEulerAngles;
+            // Stages 0 to 4 are locked in the planted save, so the door must
+            // show five locked: popped or slid bolts, a turned ring, lit lamps.
+            int locked = door.LockedShown();
             bool ok = vault.Heist == 1 && vault.Stage == 5 && vault.Turns == 4 && rules.Balance == 54321d &&
-                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && hiddenBolts == 4;
-            System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") +
+                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5;
+            System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") + " vault " + AlleySceneBuilder.VaultOption +
                 " heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage +
                 " balance " + rules.Balance + " dynamite " + rules.GearCount(GearKind.Dynamite) + " drill " + rules.GearCount(GearKind.Drill) +
-                " bribe " + rules.GearCount(GearKind.Bribe) + " bolts popped " + hiddenBolts + " outer ring " + ring.ToString("F0") + "\n");
+                " bribe " + rules.GearCount(GearKind.Bribe) + " bolts popped " + hiddenBolts + " stages shown locked " + locked + "\n");
             SessionState.SetInt("JuicySaveCheck", 2);
             EditorApplication.isPlaying = false;
             return;

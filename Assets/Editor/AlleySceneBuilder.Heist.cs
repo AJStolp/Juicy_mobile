@@ -7,8 +7,58 @@ using Object = UnityEngine.Object;
 // The vault door progress meter and the Plinko board. Both are built from
 // ArtSource/Alley (build_vault_door.py, build_plinko_board.py) and wired to
 // the chute director's rules.
+//
+// The vault has three options while Anthony picks one, switched under
+// Juicy/Alley/Vault: the code built door over the facade (the baseline), the
+// graffiti facade's own door with its wheel, bars and gear moving (A), and the
+// facade's door kept still with a lamp per stage on its frame (B). The facade
+// parts come from import_glb.py --vault-parts.
+public enum VaultDoorOption { CodeDoor, FacadeDoor, FacadeLights }
+
 public static partial class AlleySceneBuilder
 {
+    const string VaultMenu = "Juicy/Alley/Vault/";
+    const string CodeDoorMenu = VaultMenu + "Code Built Door (baseline)";
+    const string FacadeDoorMenu = VaultMenu + "Option A Facade Door Moves";
+    const string FacadeLightsMenu = VaultMenu + "Option B Facade Stage Lamps";
+    // The facade recess is the doorway plus 2mm a side, in model meters.
+    const float RecessModelWidth = 0.36f;
+
+    static VaultDoorOption? chosenVaultOption;
+
+    // The scene is the record of which option is in: a rewire keeps the door
+    // that is there, and only the menu changes it.
+    public static VaultDoorOption VaultOption
+    {
+        get
+        {
+            if (chosenVaultOption.HasValue) return chosenVaultOption.Value;
+            AlleyVaultDoor door = Object.FindAnyObjectByType<AlleyVaultDoor>(FindObjectsInactive.Include);
+            if (door == null) return VaultDoorOption.CodeDoor;
+            return door.FacadeLamps ? VaultDoorOption.FacadeLights : door.FacadeSlides ? VaultDoorOption.FacadeDoor : VaultDoorOption.CodeDoor;
+        }
+    }
+
+    public static void UseVaultOption(VaultDoorOption option)
+    {
+        chosenVaultOption = option;
+        try { WireGameplayInScene(); }
+        finally { chosenVaultOption = null; }
+    }
+
+    [MenuItem(CodeDoorMenu)] static void UseCodeDoor() { UseVaultOption(VaultDoorOption.CodeDoor); }
+    [MenuItem(FacadeDoorMenu)] static void UseFacadeDoor() { UseVaultOption(VaultDoorOption.FacadeDoor); }
+    [MenuItem(FacadeLightsMenu)] static void UseFacadeLights() { UseVaultOption(VaultDoorOption.FacadeLights); }
+    [MenuItem(CodeDoorMenu, true)] static bool CheckCodeDoor() { return CheckVaultOption(CodeDoorMenu, VaultDoorOption.CodeDoor); }
+    [MenuItem(FacadeDoorMenu, true)] static bool CheckFacadeDoor() { return CheckVaultOption(FacadeDoorMenu, VaultDoorOption.FacadeDoor); }
+    [MenuItem(FacadeLightsMenu, true)] static bool CheckFacadeLights() { return CheckVaultOption(FacadeLightsMenu, VaultDoorOption.FacadeLights); }
+
+    static bool CheckVaultOption(string menu, VaultDoorOption option)
+    {
+        Menu.SetChecked(menu, VaultOption == option);
+        return true;
+    }
+
     const string VaultDoorModel = Art + "SM_VaultDoor.fbx";
     const string PlinkoBoardModel = Art + "SM_PlinkoBoard.fbx";
     const string PlinkoCoinModel = Art + "SM_PlinkoCoin.fbx";
@@ -93,7 +143,100 @@ public static partial class AlleySceneBuilder
         };
     }
 
-    static AlleyVaultDoor BuildVaultDoor(Transform parent, AlleyChuteDirector director, AlleyCameraRig rig)
+    static AlleyVaultDoor BuildVaultDoor(Transform parent, AlleyChuteDirector director, AlleyCameraRig rig, VaultDoorOption option)
+    {
+        switch (option)
+        {
+            case VaultDoorOption.FacadeDoor: return BuildFacadeVaultDoor(parent, director, rig, false);
+            case VaultDoorOption.FacadeLights: return BuildFacadeVaultDoor(parent, director, rig, true);
+            default: return BuildCodeVaultDoor(parent, director, rig);
+        }
+    }
+
+    // Options A and B: the facade's own door. A turns its wheel a quarter per
+    // stage, slides a locking bar (then the handle) in for each of the first
+    // four stages, turns the gear lock on the fifth and swings the door open on
+    // the crack. B leaves the door still and lights a lamp per stage up the
+    // frame beside the handle.
+    static AlleyVaultDoor BuildFacadeVaultDoor(Transform parent, AlleyChuteDirector director, AlleyCameraRig rig, bool lamps)
+    {
+        GameObject facade = GameObject.Find("Vault_Facade");
+        Transform door = facade != null ? facade.transform.Find("Facade_Door") : null;
+        Transform recess = facade != null ? facade.transform.Find("Facade_Recess") : null;
+        if (door == null || recess == null)
+        {
+            Debug.LogWarning("Vault_Facade has no door parts; rebuild SM_GraffitiVaultDoor with import_glb.py --vault-parts");
+            return null;
+        }
+        Transform wheel = door.Find("Facade_Wheel");
+        Transform gear = door.Find("Facade_Gear");
+        Bounds way = recess.GetComponent<Renderer>().bounds;
+        float scale = way.size.x / RecessModelWidth;
+        Vector3 doorway = new Vector3(way.center.x, way.center.y, way.min.z);
+
+        GameObject root = Empty("Vault_Door", parent, doorway);
+        // A: inside the recess, so it pours out as the door opens. B: in
+        // front of the shut door, so the crack still flashes it gold.
+        GameObject floodObject = Empty("Vault_Flood", root.transform, lamps ? doorway + Vector3.back * 0.8f : way.center);
+        Light flood = floodObject.AddComponent<Light>();
+        flood.type = LightType.Point;
+        flood.color = new Color(1f, 0.82f, 0.45f);
+        flood.range = 7f;
+        flood.intensity = 0f;
+        flood.shadows = LightShadows.None;
+
+        AlleyVaultDoor component = root.AddComponent<AlleyVaultDoor>();
+        if (!lamps)
+        {
+            var bolts = new[] { door.Find("Facade_Bar_0"), door.Find("Facade_Bar_1"), door.Find("Facade_Bar_2"), door.Find("Facade_Handle") };
+            var slide = new Vector3[bolts.Length];
+            for (int i = 0; i < 3; i++)
+            {
+                // Each bar draws in toward the hub, out of its keeper, and
+                // sinks a little so it passes under the wheel's spokes.
+                Vector3 toHub = wheel.position - bolts[i].position;
+                toHub.z = 0f;
+                slide[i] = (toHub.normalized * 0.03f + Vector3.forward * 0.004f) * scale;
+            }
+            slide[3] = Vector3.back * 0.015f * scale;   // the handle pulls out
+            component.Configure(director, door, bolts, gear, null, wheel, null, flood, rig, Vector3.back);
+            component.ConfigureFacade(slide, 90f, new Renderer[0]);
+            return component;
+        }
+
+        // Dark glass, so a lamp that has not started reads as off; the door
+        // drives its glow.
+        Material lampMaterial = LitMaterial(MaterialRoot + "/M_VaultStageLamp.mat", "M_VaultStageLamp", new Color(0.04f, 0.07f, 0.05f), 0f, 0.85f);
+        lampMaterial.EnableKeyword("_EMISSION");
+        lampMaterial.globalIlluminationFlags = MaterialGlobalIlluminationFlags.None;
+        lampMaterial.SetColor("_EmissionColor", Color.black);
+        EditorUtility.SetDirty(lampMaterial);
+        // Up the frame on the handle's side, bottom to top.
+        float side = Mathf.Sign(gear.position.x - wheel.position.x);
+        float x = (side > 0f ? way.max.x : way.min.x) + side * 0.0165f * scale;
+        var stageLamps = new Renderer[VaultProgress.Stages];
+        for (int k = 0; k < stageLamps.Length; k++)
+        {
+            float y = way.min.y + (0.05f + k * 0.048f) * scale;
+            Vector3 face = SurfacePoint(facade, new Vector3(x, y, way.center.z));
+            GameObject lamp = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            Object.DestroyImmediate(lamp.GetComponent<Collider>());
+            lamp.name = "Stage_Lamp_" + k;
+            lamp.transform.SetParent(root.transform, false);
+            lamp.transform.position = face + Vector3.back * 0.004f * scale;
+            lamp.transform.localScale = new Vector3(0.024f, 0.024f, 0.008f) * scale;
+            Renderer renderer = lamp.GetComponent<Renderer>();
+            renderer.sharedMaterial = lampMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            stageLamps[k] = renderer;
+        }
+        component.Configure(director, null, new Transform[0], null, null, null, null, flood, rig, Vector3.back);
+        component.ConfigureFacade(new Vector3[0], 0f, stageLamps);
+        return component;
+    }
+
+    // The baseline: the code built door mounted over the facade's door.
+    static AlleyVaultDoor BuildCodeVaultDoor(Transform parent, AlleyChuteDirector director, AlleyCameraRig rig)
     {
         GameObject facade = GameObject.Find("Vault_Facade");
         Bounds fb;
