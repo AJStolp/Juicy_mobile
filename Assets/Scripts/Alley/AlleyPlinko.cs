@@ -8,6 +8,9 @@ using UnityEngine.InputSystem;
 // drags along the top rail to aim each coin and lets go to drop it. Coins are
 // real rigid bodies bouncing off real pins, held to the board's face; where
 // they settle is paid out by PlinkoPayout. Nothing about a drop is scripted.
+// A finished leg no longer starts a round: the clue trip (AlleyClueTrip) runs
+// there instead. Only Simulate (AlleyBatch.PlinkoSim) starts one, until
+// Plinko is removed.
 public class AlleyPlinko : MonoBehaviour
 {
     // Board layout in board units, mirrored from build_plinko_board.py.
@@ -86,16 +89,6 @@ public class AlleyPlinko : MonoBehaviour
         if (boardLight != null) boardLight.intensity = 0f;
     }
 
-    void Start()
-    {
-        director.Rules.LegAdvanced += OnLegAdvanced;
-    }
-
-    void OnDestroy()
-    {
-        if (director != null && director.Rules != null) director.Rules.LegAdvanced -= OnLegAdvanced;
-    }
-
     bool simulating;
     float dropX;
     public readonly List<string> Trace = new List<string>();
@@ -120,11 +113,6 @@ public class AlleyPlinko : MonoBehaviour
         if (Running) return;
         simulating = true;
         StartCoroutine(Round(count));
-    }
-
-    void OnLegAdvanced(int leg, int chutes)
-    {
-        if (!Running) StartCoroutine(Round(director.Rules.LastLegCoins));
     }
 
     IEnumerator Round(int count)

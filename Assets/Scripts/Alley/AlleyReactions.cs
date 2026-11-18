@@ -11,6 +11,8 @@ public class AlleyReactions : MonoBehaviour
     [SerializeField] AlleyCameraRig cameraRig;
     [SerializeField] double bigWinChime = 150d;
 
+    public const string WalkParameter = "isWalking";
+
     HeistSortRules rules;
     VaultProgress vault;
     float shownHeat;
@@ -65,7 +67,7 @@ public class AlleyReactions : MonoBehaviour
         JuicyAudioHooks.Sort();
         if (result != SortResult.Correct && result != SortResult.Gold) return;
         // Only start a light push from idle, so pushes do not stack up.
-        if (raccoon == null || !raccoon.GetCurrentAnimatorStateInfo(0).IsName("Torch_Idle") || raccoon.IsInTransition(0)) return;
+        if (raccoon == null || Walking || !raccoon.GetCurrentAnimatorStateInfo(0).IsName("Torch_Idle") || raccoon.IsInTransition(0)) return;
         raccoon.SetTrigger("onPushLight");
         PushLights++;
     }
@@ -86,9 +88,12 @@ public class AlleyReactions : MonoBehaviour
         JuicyAudioHooks.Getaway();
     }
 
+    // Nothing interrupts the clue trip's walk; the trip shoves on its own.
+    bool Walking => raccoon != null && raccoon.GetBool(WalkParameter);
+
     void PushHeavy()
     {
-        if (raccoon == null) return;
+        if (raccoon == null || Walking) return;
         raccoon.ResetTrigger("onPushLight");
         raccoon.SetTrigger("onPushHeavy");
         PushHeavies++;

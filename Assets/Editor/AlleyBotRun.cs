@@ -72,12 +72,15 @@ public static class AlleyBotRun
 
         float now = Time.time;
         var plinko = Object.FindAnyObjectByType<AlleyPlinko>();
+        var trip = Object.FindAnyObjectByType<AlleyClueTrip>();
         if (now >= nextProgress)
         {
             nextProgress = now + 10f;
             File.AppendAllText(Progress, System.DateTime.Now.ToString("HH:mm:ss") + " game " + now.ToString("0") + "s stage " + director.Vault.Stage +
-                " turns " + director.Vault.Turns + " leg " + director.Rules.Leg + " plinko " + (plinko != null && plinko.Running) + " errors " + errors + "\n");
+                " turns " + director.Vault.Turns + " leg " + director.Rules.Leg + " plinko " + (plinko != null && plinko.Running) +
+                " clue trip " + (trip != null && trip.Running) + " errors " + errors + "\n");
         }
+        if (trip != null && trip.Revealing) Shoot("clue", now, 0f);
         maxDynamite = Mathf.Max(maxDynamite, director.Rules.GearCount(GearKind.Dynamite));
         if (plinko != null && plinko.Running && plinko.CoinsDropped > 0 && !shots.ContainsKey("plinko"))
         {
@@ -98,9 +101,11 @@ public static class AlleyBotRun
             shots[name] = -1f;
         }
 
-        bool done = (crackTime >= 0f && now >= crackTime + AfterCrack) || now >= MaxGameSeconds;
+        // A clue trip in flight finishes before the report, so the run ends
+        // with the sort running again.
+        bool done = ((crackTime >= 0f && now >= crackTime + AfterCrack) || now >= MaxGameSeconds) && (trip == null || !trip.Running);
         if (!done) return;
-        File.WriteAllText(Report, Describe(director, plinko, now));
+        File.WriteAllText(Report, Describe(director, plinko, trip, now));
         SessionState.SetBool("JuicyBot", false);
         Time.timeScale = 1f;
         if (File.Exists(AutoPlayFlag)) File.Delete(AutoPlayFlag);
@@ -126,7 +131,7 @@ public static class AlleyBotRun
             events.Add(Time.time.ToString("0") + "s vault " + heist + " cracked");
             Shoot("crack", Time.time, 2.4f);
         };
-        director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg + ", plinko coins " + director.Rules.LastLegCoins);
+        director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg + " ended, best tier " + director.Rules.LastLegBestTier);
     }
 
     // Queues a capture once per name, delay seconds from now.
@@ -136,7 +141,7 @@ public static class AlleyBotRun
         shots[name] = now + delay;
     }
 
-    static string Describe(AlleyChuteDirector director, AlleyPlinko plinko, float now)
+    static string Describe(AlleyChuteDirector director, AlleyPlinko plinko, AlleyClueTrip trip, float now)
     {
         var reactions = Object.FindAnyObjectByType<AlleyReactions>();
         var door = Object.FindAnyObjectByType<AlleyVaultDoor>();
@@ -158,6 +163,14 @@ public static class AlleyBotRun
             log.AppendLine("plinko rounds " + plinko.Rounds + " coins " + plinko.CoinsDropped + " vault hits " + plinko.VaultHits + " jostles " + plinko.Jostles +
                 " slots " + string.Join(",", plinko.SlotHits));
         }
+        if (trip != null)
+        {
+            log.AppendLine("clue trips " + trip.Trips + " (dynamite " + trip.Blasts + ", shove " + trip.Shoves + ") skipped " + trip.Skipped +
+                " for " + rules.Leg + " legs, kept on " + trip.Keeper + ", clues " + director.Clues.Count + "/" + director.Clues.CluesNeeded +
+                " symbols " + string.Join(",", director.Clues.SymbolsSnapshot()) + " tiers " + string.Join(",", director.Clues.TiersSnapshot()) +
+                ", sort paused " + director.Paused);
+        }
+        else log.AppendLine("clue trips missing");
         log.AppendLine("gear dynamite " + rules.GearCount(GearKind.Dynamite) + " (max held " + maxDynamite + ", cap " + rules.DynamiteCap + ")" +
             " drill " + rules.GearCount(GearKind.Drill) + " bribe " + rules.GearCount(GearKind.Bribe));
         if (reactions != null) log.AppendLine("raccoon pushHeavy " + reactions.PushHeavies + " busts " + reactions.Busts);
@@ -167,6 +180,11 @@ public static class AlleyBotRun
         log.AppendLine("errors " + errors + (errors > 0 ? " first: " + firstError : ""));
         log.AppendLine("events:");
         foreach (string e in events) log.AppendLine("  " + e);
+        if (trip != null)
+        {
+            log.AppendLine("clue trip log:");
+            foreach (string line in trip.Log) log.AppendLine("  " + line);
+        }
         return log.ToString();
     }
 

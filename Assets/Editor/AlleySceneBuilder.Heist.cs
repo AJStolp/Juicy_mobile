@@ -38,6 +38,8 @@ public static partial class AlleySceneBuilder
 
         var tiles = new Renderer[WordSignSlots];
         var glyphs = new TextMeshPro[WordSignSlots];
+        var clueFaces = new Renderer[WordSignSlots];
+        Material clueLook = ClueSymbolMaterial();
         float step = tile * 1.18f;
         for (int i = 0; i < WordSignSlots; i++)
         {
@@ -64,12 +66,215 @@ public static partial class AlleySceneBuilder
             text.text = "H";
             tiles[i] = renderer;
             glyphs[i] = text;
+
+            // Option B: a clue covers the tile's face, in front of the letter.
+            GameObject face = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            Object.DestroyImmediate(face.GetComponent<Collider>());
+            face.name = "Clue_Face";
+            face.transform.SetParent(cube.transform, false);
+            face.transform.localPosition = new Vector3(0f, 0f, -0.62f);
+            face.transform.localScale = new Vector3(1.05f, 1.05f, 1f);
+            Renderer faceRenderer = face.GetComponent<Renderer>();
+            faceRenderer.sharedMaterial = clueLook;
+            faceRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            faceRenderer.receiveShadows = false;
+            face.SetActive(false);
+            clueFaces[i] = faceRenderer;
         }
 
         AlleyWordSign sign = root.AddComponent<AlleyWordSign>();
-        sign.Configure(director, tiles, glyphs);
+        sign.Configure(director, tiles, glyphs, clueFaces);
         sign.Show("HEIST", _ => false);
         return sign;
+    }
+
+    // The clue trip: the spots the raccoon visits in turn, the dynamite blast,
+    // and both places clues can be kept (the pick is Juicy/Alley/Clues).
+    const string ClueKeeperPref = "Juicy.Alley.ClueKeeper";
+    const string ClueSymbolMaterialPath = MaterialRoot + "/M_ClueSymbol.mat";
+    static readonly string[] ClueProps = { "Dumpster", "Heavy_Crates", "Trash_Bag_03", "Wall_Lamp_Left" };
+
+    static ClueKeeper SavedClueKeeper => (ClueKeeper)EditorPrefs.GetInt(ClueKeeperPref, (int)ClueKeeper.Notebook);
+
+    static Material ClueSymbolMaterial()
+    {
+        Material material = TransparentMaterial(ClueSymbolMaterialPath, "M_ClueSymbol", "Universal Render Pipeline/Particles/Unlit", null, Color.white);
+        material.SetFloat("_Cull", 0f);
+        EditorUtility.SetDirty(material);
+        return material;
+    }
+
+    static AlleyClueTrip BuildClueTrip(Transform parent, AlleyChuteDirector director, AlleyVaultDoor vaultDoor, AlleyCameraRig rig, AlleyWordSign sign, GameObject raccoon)
+    {
+        if (raccoon == null) return null;
+        StandOnSpot stand = raccoon.GetComponent<StandOnSpot>();
+        Vector3 home = RaccoonSpot();
+        var spots = new List<ClueSpot>();
+        foreach (string name in ClueProps)
+        {
+            GameObject prop = GameObject.Find(name);
+            Bounds b;
+            if (prop == null || !TryBounds(prop, out b)) continue;
+            spots.Add(SpotFor(prop.transform, b, home));
+        }
+
+        GameObject root = Empty("Clue_Trip", parent, Vector3.zero);
+        ParticleSystem burst = Burst(root.transform);
+        GameObject flashObject = Empty("Clue_Blast_Light", root.transform, Vector3.zero);
+        Light flash = flashObject.AddComponent<Light>();
+        flash.type = LightType.Point;
+        flash.color = new Color(1f, 0.6f, 0.25f);
+        flash.range = 5f;
+        flash.intensity = 0f;
+        flash.shadows = LightShadows.None;
+
+        AlleyClueNotebook notebook = BuildClueNotebook();
+        AlleyClueTrip trip = root.AddComponent<AlleyClueTrip>();
+        trip.Configure(director, vaultDoor, rig, raccoon.GetComponentInChildren<Animator>(), stand, spots.ToArray(), burst, flash,
+            ClueSymbolMaterial(), notebook, sign);
+        ApplyClueKeeper(trip, SavedClueKeeper);
+        EditorUtility.SetDirty(root);
+        return trip;
+    }
+
+    // He stands just off the prop's near side, toward the manhole; the clue
+    // rises over a prop on the ground, or out of a lamp on the wall.
+    static ClueSpot SpotFor(Transform prop, Bounds b, Vector3 home)
+    {
+        Vector3 near = b.ClosestPoint(new Vector3(home.x, b.center.y, home.z));
+        Vector3 toward = new Vector3(home.x - near.x, 0f, home.z - near.z);
+        toward = toward.sqrMagnitude > 1e-4f ? toward.normalized : Vector3.back;
+        Vector3 standAt = near + toward * 0.38f;
+        standAt = new Vector3(Mathf.Clamp(standAt.x, -1.5f, 1.5f), home.y, standAt.z);
+        bool onWall = b.min.y > 1f;
+        Vector3 rise = Vector3.Lerp(new Vector3(b.center.x, 0f, b.center.z), new Vector3(standAt.x, 0f, standAt.z), onWall ? 0.25f : 0.3f);
+        rise.y = onWall ? b.center.y + 0.15f : b.max.y + 0.55f;
+        return new ClueSpot { Prop = prop, Stand = standAt, Rise = rise };
+    }
+
+    // Option A: the project's first screen canvas, a notebook in the top
+    // left corner with one slot per clue.
+    static AlleyClueNotebook BuildClueNotebook()
+    {
+        GameObject canvasObject = new GameObject("Clue_Notebook_Canvas", typeof(RectTransform), typeof(Canvas), typeof(UnityEngine.UI.CanvasScaler));
+        Canvas canvas = canvasObject.GetComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceCamera;
+        canvas.worldCamera = Camera.main;
+        canvas.planeDistance = 0.3f;
+        canvas.sortingOrder = 10;
+        var scaler = canvasObject.GetComponent<UnityEngine.UI.CanvasScaler>();
+        scaler.uiScaleMode = UnityEngine.UI.CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1080f, 1920f);
+        scaler.matchWidthOrHeight = 0.5f;
+
+        var page = UiBox("Notebook", canvasObject.transform, new Color(0.93f, 0.88f, 0.74f), new Vector2(0f, 1f), new Vector2(40f, -150f), new Vector2(480f, 200f));
+        page.localRotation = Quaternion.Euler(0f, 0f, 2.5f);
+        UiBox("Binding", page, new Color(0.55f, 0.12f, 0.1f), new Vector2(0f, 1f), Vector2.zero, new Vector2(26f, 200f));
+        UiBox("Rule_Top", page, new Color(0.35f, 0.5f, 0.75f, 0.35f), new Vector2(0f, 1f), new Vector2(26f, -62f), new Vector2(454f, 3f));
+
+        var title = new GameObject("Title", typeof(RectTransform), typeof(TextMeshProUGUI));
+        var titleRect = (RectTransform)title.transform;
+        titleRect.SetParent(page, false);
+        Pin(titleRect, new Vector2(0f, 1f), new Vector2(48f, -10f), new Vector2(400f, 50f));
+        var text = title.GetComponent<TextMeshProUGUI>();
+        text.text = "CLUES";
+        text.fontSize = 38f;
+        text.fontStyle = FontStyles.Bold;
+        text.color = new Color(0.22f, 0.14f, 0.08f);
+        text.alignment = TextAlignmentOptions.Left;
+        text.raycastTarget = false;
+
+        var slots = new UnityEngine.UI.RawImage[ClueRules.CluesPerHackLater];
+        for (int i = 0; i < slots.Length; i++)
+        {
+            var slot = new GameObject("Clue_" + i, typeof(RectTransform), typeof(UnityEngine.UI.RawImage));
+            var rect = (RectTransform)slot.transform;
+            rect.SetParent(page, false);
+            Pin(rect, new Vector2(0f, 1f), new Vector2(48f + i * 106f, -74f), new Vector2(100f, 100f));
+            rect.pivot = new Vector2(0.5f, 0.5f);
+            rect.anchoredPosition += new Vector2(50f, -50f);
+            var image = slot.GetComponent<UnityEngine.UI.RawImage>();
+            image.raycastTarget = false;
+            image.color = new Color(0.16f, 0.14f, 0.12f, 0.35f);
+            slots[i] = image;
+        }
+
+        AlleyClueNotebook notebook = canvasObject.AddComponent<AlleyClueNotebook>();
+        notebook.Configure(canvas, page, slots);
+        return notebook;
+    }
+
+    static RectTransform UiBox(string name, Transform parent, Color color, Vector2 anchor, Vector2 position, Vector2 size)
+    {
+        var box = new GameObject(name, typeof(RectTransform), typeof(UnityEngine.UI.Image));
+        var rect = (RectTransform)box.transform;
+        rect.SetParent(parent, false);
+        Pin(rect, anchor, position, size);
+        var image = box.GetComponent<UnityEngine.UI.Image>();
+        image.color = color;
+        image.raycastTarget = false;
+        return rect;
+    }
+
+    static void Pin(RectTransform rect, Vector2 anchor, Vector2 position, Vector2 size)
+    {
+        rect.anchorMin = rect.anchorMax = anchor;
+        rect.pivot = anchor;
+        rect.anchoredPosition = position;
+        rect.sizeDelta = size;
+    }
+
+    // Edit mode: the scene keeps the pick and shows it. Play mode: switches live.
+    static void ApplyClueKeeper(AlleyClueTrip trip, ClueKeeper keeper)
+    {
+        if (trip == null) return;
+        if (Application.isPlaying)
+        {
+            trip.Keeper = keeper;
+            return;
+        }
+        var serialized = new SerializedObject(trip);
+        serialized.FindProperty("keeper").enumValueIndex = (int)keeper;
+        serialized.ApplyModifiedPropertiesWithoutUndo();
+        var notebook = Object.FindAnyObjectByType<AlleyClueNotebook>();
+        if (notebook != null) notebook.Canvas.enabled = keeper == ClueKeeper.Notebook;
+    }
+
+    public static void SetClueKeeper(ClueKeeper keeper)
+    {
+        EditorPrefs.SetInt(ClueKeeperPref, (int)keeper);
+        var trip = Object.FindAnyObjectByType<AlleyClueTrip>();
+        ApplyClueKeeper(trip, keeper);
+        if (Application.isPlaying || trip == null) return;
+        EditorUtility.SetDirty(trip);
+        UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(trip.gameObject.scene);
+        UnityEditor.SceneManagement.EditorSceneManager.SaveScene(trip.gameObject.scene);
+    }
+
+    [MenuItem("Juicy/Alley/Clues/Option A Notebook")]
+    static void UseClueNotebook() => SetClueKeeper(ClueKeeper.Notebook);
+
+    [MenuItem("Juicy/Alley/Clues/Option B Word Sign")]
+    static void UseClueWordSign() => SetClueKeeper(ClueKeeper.WordSign);
+
+    [MenuItem("Juicy/Alley/Clues/Option A Notebook", true)]
+    static bool CheckClueNotebook()
+    {
+        Menu.SetChecked("Juicy/Alley/Clues/Option A Notebook", CurrentClueKeeper() == ClueKeeper.Notebook);
+        return true;
+    }
+
+    [MenuItem("Juicy/Alley/Clues/Option B Word Sign", true)]
+    static bool CheckClueWordSign()
+    {
+        Menu.SetChecked("Juicy/Alley/Clues/Option B Word Sign", CurrentClueKeeper() == ClueKeeper.WordSign);
+        return true;
+    }
+
+    static ClueKeeper CurrentClueKeeper()
+    {
+        var trip = Object.FindAnyObjectByType<AlleyClueTrip>();
+        return trip != null ? trip.Keeper : SavedClueKeeper;
     }
 
     static AlleyCameraRig EnsureCameraRig()

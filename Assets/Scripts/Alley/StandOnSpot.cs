@@ -9,6 +9,8 @@ using UnityEngine;
 // above the real soles (the lowest vertices skinned to the feet; the tail
 // hangs lower, so the whole-mesh minimum would be wrong). After that it plants
 // by the foot bones alone, which costs nothing per frame.
+// The spot can be moved at runtime (the clue trip walks him by moving it);
+// Home is the spot he was built on, the manhole.
 // Runs before TorchGrip so the torch follows the corrected hand.
 [DefaultExecutionOrder(-10)]
 public class StandOnSpot : MonoBehaviour
@@ -23,8 +25,24 @@ public class StandOnSpot : MonoBehaviour
     Transform rightFoot;
     readonly List<int> footVertices = new List<int>();
     float ankleHeight = float.NaN;
+    bool snap;
 
     public float AnkleHeight => ankleHeight;
+    public Vector3 Home { get; private set; }
+    public Vector3 Spot => spot;
+
+    // Moves the spot. Pinned plants him on it this frame instead of easing
+    // over, which is how a script walks him while root motion is off.
+    public void SetSpot(Vector3 target, bool pinned)
+    {
+        spot = target;
+        snap = pinned;
+    }
+
+    void Awake()
+    {
+        Home = spot;
+    }
 
     public void Configure(Animator body, SkinnedMeshRenderer mesh, Vector3 target)
     {
@@ -62,7 +80,7 @@ public class StandOnSpot : MonoBehaviour
         Vector3 stance = (leftFoot.position + rightFoot.position) * 0.5f;
         Vector3 offset = new Vector3(spot.x - stance.x, spot.y + ankleHeight - planted, spot.z - stance.z);
         // Snap on the first frame so he never starts off the spot.
-        Vector3 step = first ? offset : Vector3.MoveTowards(Vector3.zero, offset, settleSpeed * Time.deltaTime);
+        Vector3 step = first || snap ? offset : Vector3.MoveTowards(Vector3.zero, offset, settleSpeed * Time.deltaTime);
         transform.position += step;
     }
 

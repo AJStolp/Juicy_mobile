@@ -690,7 +690,7 @@ public static partial class AlleySceneBuilder
         Transform framing = GameObject.Find("Alley_Framing").transform;
         Reparent("Heavy_Crates", framing);
         Reparent("Vault_Padlock", framing);
-        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign" };
+        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign", "Clue_Trip", "Clue_Notebook_Canvas" };
         for (int i = 0; i < retired.Length; i++)
         {
             GameObject old = GameObject.Find(retired[i]);
@@ -723,7 +723,9 @@ public static partial class AlleySceneBuilder
         reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), rig);
         AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig);
         BuildPlinko(grid, director, vaultDoor, rig);
-        BuildWordSign(grid, director);
+        AlleyWordSign sign = BuildWordSign(grid, director);
+        EnsureWalk();
+        BuildClueTrip(grid, director, vaultDoor, rig, sign, raccoon);
 
         BuildScoreReadout(director);
         template.gameObject.SetActive(false);
@@ -1531,6 +1533,7 @@ public static partial class AlleySceneBuilder
         AnimatorState pushLight = AddState(machine, "Push_Light", LoadClip(Raccoon + "Raccoon_Push_Light.fbx"), new Vector3(280f, 140f, 0f));
         AnimatorState pushHeavy = AddState(machine, "Push_Heavy", LoadClip(Raccoon + "Raccoon_Push_Heavy.fbx"), new Vector3(40f, 140f, 0f));
         machine.defaultState = idle;
+        AddWalk(controller);
 
         BoolTransition(idle, climb, "isClimbing", true);
         BoolTransition(climb, idle, "isClimbing", false);
@@ -1541,6 +1544,32 @@ public static partial class AlleySceneBuilder
         ExitAfter(pushHeavy, idle);
         ExitAfter(climbDown, idle);
         return controller;
+    }
+
+    // The clue trip walks him by script with root motion off. There is no walk
+    // clip yet, so the walk state plays the idle as a placeholder until T-015's
+    // clip exists, and he slides. Safe to run on a controller that has it.
+    static void AddWalk(AnimatorController controller)
+    {
+        if (!controller.parameters.Any(p => p.name == AlleyReactions.WalkParameter))
+            controller.AddParameter(AlleyReactions.WalkParameter, AnimatorControllerParameterType.Bool);
+        AnimatorStateMachine machine = controller.layers[0].stateMachine;
+        if (machine.states.Any(s => s.state.name == "Walk")) return;
+        AnimatorState idle = machine.states.Select(s => s.state).FirstOrDefault(s => s.name == "Torch_Idle");
+        if (idle == null) return;
+        AnimatorState walk = AddState(machine, "Walk", idle.motion as AnimationClip, new Vector3(280f, -120f, 0f));
+        walk.speed = 1.5f;
+        BoolTransition(idle, walk, AlleyReactions.WalkParameter, true);
+        BoolTransition(walk, idle, AlleyReactions.WalkParameter, false);
+        EditorUtility.SetDirty(controller);
+    }
+
+    static void EnsureWalk()
+    {
+        AnimatorController controller = AssetDatabase.LoadAssetAtPath<AnimatorController>(ControllerPath);
+        if (controller == null) return;
+        AddWalk(controller);
+        AssetDatabase.SaveAssets();
     }
 
     static void DressRaccoon(GameObject raccoon, RuntimeAnimatorController controller)
@@ -1755,6 +1784,57 @@ public static partial class AlleySceneBuilder
         var renderer = steamObject.GetComponent<ParticleSystemRenderer>();
         renderer.sharedMaterial = SteamMaterial();
         renderer.sortingFudge = 10f;
+    }
+
+    // The dynamite blast on a clue spot: a one shot burst of sparks that cools
+    // to smoke, built like the steam. The clue trip moves it to the spot.
+    static ParticleSystem Burst(Transform parent)
+    {
+        GameObject burstObject = new GameObject("Clue_Burst");
+        burstObject.transform.SetParent(parent, false);
+        burstObject.transform.rotation = Quaternion.Euler(-90f, 0f, 0f);
+
+        ParticleSystem burst = burstObject.AddComponent<ParticleSystem>();
+        burst.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+        var main = burst.main;
+        main.loop = false;
+        main.playOnAwake = false;
+        main.duration = 0.6f;
+        main.startLifetime = new ParticleSystem.MinMaxCurve(0.5f, 1.4f);
+        main.startSpeed = new ParticleSystem.MinMaxCurve(1.5f, 4.2f);
+        main.startSize = new ParticleSystem.MinMaxCurve(0.18f, 0.6f);
+        main.startRotation = new ParticleSystem.MinMaxCurve(0f, Mathf.PI * 2f);
+        main.startColor = new ParticleSystem.MinMaxGradient(new Color(1f, 0.85f, 0.35f, 1f), new Color(1f, 0.4f, 0.1f, 1f));
+        main.gravityModifier = 0.35f;
+        main.simulationSpace = ParticleSystemSimulationSpace.World;
+        main.scalingMode = ParticleSystemScalingMode.Hierarchy;
+        main.maxParticles = 120;
+        var emission = burst.emission;
+        emission.rateOverTime = 0f;
+        emission.SetBursts(new[] { new ParticleSystem.Burst(0f, 70), new ParticleSystem.Burst(0.08f, 30) });
+        var shape = burst.shape;
+        // A wide cone along local Z, which the -90 X rotation points up.
+        shape.shapeType = ParticleSystemShapeType.Cone;
+        shape.angle = 55f;
+        shape.radius = 0.15f;
+        var velocity = burst.limitVelocityOverLifetime;
+        velocity.enabled = true;
+        velocity.limit = 1.2f;
+        velocity.dampen = 0.25f;
+        var size = burst.sizeOverLifetime;
+        size.enabled = true;
+        size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.5f, 1f, 2.4f));
+        var color = burst.colorOverLifetime;
+        color.enabled = true;
+        var cool = new Gradient();
+        cool.SetKeys(new[] { new GradientColorKey(new Color(1f, 0.95f, 0.7f), 0f), new GradientColorKey(new Color(1f, 0.45f, 0.12f), 0.25f), new GradientColorKey(new Color(0.35f, 0.33f, 0.32f), 0.6f) },
+                     new[] { new GradientAlphaKey(1f, 0f), new GradientAlphaKey(0.85f, 0.4f), new GradientAlphaKey(0f, 1f) });
+        color.color = cool;
+
+        var renderer = burstObject.GetComponent<ParticleSystemRenderer>();
+        renderer.sharedMaterial = SteamMaterial();
+        renderer.sortingFudge = 5f;
+        return burst;
     }
 
     static Material SteamMaterial()
