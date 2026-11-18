@@ -267,6 +267,108 @@ public static class AlleyBatch
         }
     }
 
+    // Plants a full clue cycle, plays one hack with scripted taps, and saves
+    // every frame at 30 fps to /tmp/juicy-hack-<name>/frame_000.png on, with
+    // the result in /tmp/juicy-hack-<name>.txt (PASS or FAIL first). Runs on
+    // the bot's save, so the real save is untouched. Turn the frames into a
+    // video with: ffmpeg -framerate 30 -i frame_%03d.png -pix_fmt yuv420p out.mp4
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.HackPerfect      (no -quit)
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.HackFailSecond   (no -quit)
+    public static void HackPerfect() => HackCapture("perfect", -1);
+    public static void HackFailSecond() => HackCapture("fail-second", 1);
+
+    const string HackStepKey = "JuicyHackCapture";
+    const int HackTailFrames = 60;
+    static int hackLastFrame = -1;
+    static int hackFrames;
+    static int hackTail;
+    static string hackBefore = "";
+
+    static void HackCapture(string name, int wrongAt)
+    {
+        OpenAlley();
+        string folder = "/tmp/juicy-hack-" + name;
+        if (System.IO.Directory.Exists(folder)) System.IO.Directory.Delete(folder, true);
+        System.IO.Directory.CreateDirectory(folder);
+        System.IO.File.Delete(folder + ".txt");
+        System.IO.File.WriteAllText("/tmp/juicy-alley-bot", "hack");
+        SessionState.SetString("JuicyHackName", name);
+        SessionState.SetInt("JuicyHackWrongAt", wrongAt);
+        SessionState.SetInt(HackStepKey, 1);
+        EditorApplication.update += HackCaptureTick;
+        EditorApplication.isPlaying = true;
+    }
+
+    [InitializeOnLoadMethod]
+    static void ResumeHackCapture()
+    {
+        if (SessionState.GetInt(HackStepKey, 0) != 0) EditorApplication.update += HackCaptureTick;
+    }
+
+    static void HackCaptureTick()
+    {
+        int step = SessionState.GetInt(HackStepKey, 0);
+        string name = SessionState.GetString("JuicyHackName", "hack");
+        string folder = "/tmp/juicy-hack-" + name;
+        var hack = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyHack>() : null;
+        var director = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>() : null;
+        if (step == 1 && hack != null && director != null && director.Clues != null && UnityEngine.Time.frameCount > 5)
+        {
+            UnityEngine.Time.captureFramerate = 30;
+            UnityEngine.Time.timeScale = 1f;
+            var clues = director.Clues;
+            while (!clues.HackDue) clues.ClueFound(ClueRules.MaxTier);
+            hack.ScriptNext(SessionState.GetInt("JuicyHackWrongAt", -1));
+            hackBefore = "before stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " balance " + director.Rules.Balance.ToString("0") +
+                " bribes " + director.Rules.GearCount(GearKind.Bribe) + " drills " + director.Rules.GearCount(GearKind.Drill) +
+                " clues " + string.Join(",", clues.SymbolsSnapshot());
+            hackFrames = 0;
+            hackTail = 0;
+            hackLastFrame = -1;
+            SessionState.SetInt(HackStepKey, 2);
+            return;
+        }
+        if (step == 2 && hack != null)
+        {
+            if (UnityEngine.Time.frameCount == hackLastFrame) return;
+            hackLastFrame = UnityEngine.Time.frameCount;
+            AlleySceneBuilder.Capture(folder + "/frame_" + hackFrames.ToString("000") + ".png");
+            hackFrames++;
+            if (hack.Hacks == 0 || hack.Running || ++hackTail < HackTailFrames) return;
+            HackReward reward = hack.LastReward;
+            int count = hack.LastClueCount;
+            int wrongAt = SessionState.GetInt("JuicyHackWrongAt", -1);
+            int expectedSteps = wrongAt < 0 ? count : wrongAt;
+            HackReward expected = ClueRules.RewardFor(count, expectedSteps);
+            var saved = HeistSave.FromJson(UnityEngine.PlayerPrefs.GetString("Juicy.HeistSave.Bot", ""));
+            bool ok = reward.Steps == expectedSteps && reward.Perfect == (wrongAt < 0) && reward.Cash == expected.Cash &&
+                reward.Bribes == expected.Bribes && reward.Drills == expected.Drills && reward.Turns == expected.Turns &&
+                director.Clues.Count == 0 && saved != null && saved.clueSymbols.Length == 0 && !director.Paused;
+            System.IO.File.WriteAllText(folder + ".txt", (ok ? "PASS" : "FAIL") + " " + name + "\n" +
+                "steps " + reward.Steps + "/" + count + (reward.Perfect ? " perfect" : " failed") + " (expected " + expectedSteps + ")\n" +
+                "paid cash " + reward.Cash.ToString("0") + " bribes " + reward.Bribes + " drills " + reward.Drills + " vault turns " + reward.Turns + "\n" +
+                hackBefore + "\n" +
+                "after stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " balance " + director.Rules.Balance.ToString("0") +
+                " bribes " + director.Rules.GearCount(GearKind.Bribe) + " drills " + director.Rules.GearCount(GearKind.Drill) +
+                " clues left " + director.Clues.Count + " saved clues " + (saved != null ? saved.clueSymbols.Length.ToString() : "none") +
+                " sort resumed " + !director.Paused + "\n" +
+                "keys " + string.Join(",", hack.KeySymbols) + "\n" +
+                "frames " + hackFrames + " in " + folder + "\n");
+            UnityEngine.Time.captureFramerate = 0;
+            SessionState.SetInt(HackStepKey, 3);
+            EditorApplication.isPlaying = false;
+            return;
+        }
+        if (step == 3 && !EditorApplication.isPlaying)
+        {
+            SessionState.SetInt(HackStepKey, 0);
+            EditorApplication.update -= HackCaptureTick;
+            System.IO.File.Delete("/tmp/juicy-alley-bot");
+            bool passed = System.IO.File.Exists(folder + ".txt") && System.IO.File.ReadAllText(folder + ".txt").StartsWith("PASS");
+            if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(passed ? 0 : 1);
+        }
+    }
+
     // Measures the editor's CPU use in Play mode, 15 seconds each: uncapped,
     // at the frame rate cap, and at 30. Plays as a person would (no bot,
     // normal speed, nothing touched), and splits each frame into game, render
