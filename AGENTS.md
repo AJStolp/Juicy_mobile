@@ -13,7 +13,10 @@ the release path, and the tools.
 - **Board:** project `juicysortgame` at `http://100.76.63.94:8000` (the `headspace-board`
   machine on the tailnet, no login). API description at `/openapi.json`.
 - **No factory.** Anthony queues a batch of tickets and a lead agent works it in a session with
-  a workflow, release included (headspace `projects.yml`, T-418).
+  a workflow, release included (headspace `projects.yml`, T-418). That workflow is
+  `.claude/workflows/work-board-batch.js`: run it by name with `{tickets: ["T-005", ...]}`, or
+  with nothing to take the frontier. It works one ticket at a time, with separate agents to
+  build, QA and merge, and stops at the promotion PR.
 - **Branches:** a ticket branch comes off `dev` and carries the ticket id in its name
   (`T-001-plinko-physics`). Its PR squash merges into `dev` with a `Refs T-001` trailer, and the
   ticket moves to `done`. The promotion PR from `dev` into `main` merges with a merge commit and
