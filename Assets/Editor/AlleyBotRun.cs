@@ -194,8 +194,6 @@ public static class AlleyBotRun
         {
             Transform l = animator.GetBoneTransform(HumanBodyBones.LeftFoot), r = animator.GetBoneTransform(HumanBodyBones.RightFoot);
             if (l != null && r != null) bones = " feet bones " + ((l.position + r.position) * 0.5f).ToString("F2");
-            var stand = raccoon.GetComponent<StandOnSpot>();
-            if (stand != null) bones += " ankle " + stand.AnkleHeight.ToString("0.00");
         }
         string cover = "";
         GameObject manhole = GameObject.Find("Manhole");

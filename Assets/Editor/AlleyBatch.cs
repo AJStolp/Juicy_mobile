@@ -359,6 +359,164 @@ public static class AlleyBatch
         System.IO.File.WriteAllText("/tmp/juicy-plinko-clearance.txt", log.ToString());
     }
 
+    // Plays every raccoon clip frame by frame on the manhole, as play does
+    // (idle first, then each reaction, the stance easing between frames), and
+    // records the lowest tail vertex and the lowest sole vertex against the
+    // cover top. Pass: tail at or above the cover and soles within 0.01 of it
+    // in every frame. Result in /tmp/juicy-tail-check.txt. Leaves the scene
+    // unsaved.
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.TailCheck -quit
+    const string TailReport = "/tmp/juicy-tail-check.txt";
+    const float SoleTolerance = 0.01f;
+    static readonly string[] RaccoonClips = { "Torch_Idle", "Push_Light", "Push_Heavy", "Climb", "Climb_Down" };
+
+    public static void TailCheck()
+    {
+        OpenAlley();
+        var raccoon = UnityEngine.GameObject.Find("Raccoon_Mascot");
+        var animator = raccoon.GetComponentInChildren<UnityEngine.Animator>();
+        var stand = raccoon.GetComponent<StandOnSpot>();
+        stand.Prepare();
+        float cover = CoverTop();
+        var frames = new System.Text.StringBuilder("clip frame tail sole (metres from the cover top)\n");
+        var summary = new System.Text.StringBuilder();
+        float worstTail = float.MaxValue, worstSole = 0f;
+        string worstTailAt = "";
+        foreach (string name in RaccoonClips)
+        {
+            var clip = RaccoonClip(name);
+            int count = UnityEngine.Mathf.RoundToInt(clip.length * clip.frameRate);
+            float clipTail = float.MaxValue, soleLow = float.MaxValue, soleHigh = float.MinValue;
+            int clipTailFrame = 0, below = 0;
+            for (int f = 0; f <= count; f++)
+            {
+                PoseRaccoon(animator, clip, f / clip.frameRate);
+                stand.Settle(1f / clip.frameRate);
+                LowestPoints(stand, out float tail, out float sole);
+                tail -= cover;
+                sole -= cover;
+                frames.AppendLine(name + " " + f + " " + tail.ToString("+0.000;-0.000") + " " + sole.ToString("+0.000;-0.000"));
+                if (tail < 0f) below++;
+                if (tail < clipTail) { clipTail = tail; clipTailFrame = f; }
+                soleLow = UnityEngine.Mathf.Min(soleLow, sole);
+                soleHigh = UnityEngine.Mathf.Max(soleHigh, sole);
+            }
+            summary.AppendLine(name + ": " + (count + 1) + " frames, tail lowest " + clipTail.ToString("+0.000;-0.000") + " at frame " + clipTailFrame +
+                ", tail below the cover in " + below + " frames, soles " + soleLow.ToString("+0.000;-0.000") + " to " + soleHigh.ToString("+0.000;-0.000"));
+            if (clipTail < worstTail) { worstTail = clipTail; worstTailAt = name + " frame " + clipTailFrame; }
+            worstSole = UnityEngine.Mathf.Max(worstSole, UnityEngine.Mathf.Abs(soleLow), UnityEngine.Mathf.Abs(soleHigh));
+        }
+        bool pass = worstTail >= 0f && worstSole <= SoleTolerance;
+        string head = (pass ? "PASS" : "FAIL") + " tail lowest " + worstTail.ToString("+0.000;-0.000") + " (" + worstTailAt + "), soles at most " +
+            worstSole.ToString("0.000") + " from the cover top. Target: tail at or above 0, soles within " + SoleTolerance.ToString("0.00") + ".\n" +
+            "cover top y " + cover.ToString("0.000") + ", " + stand.TailVertices.Count + " tail vertices, " + stand.FootVertices.Count + " sole vertices\n";
+        System.IO.File.WriteAllText(TailReport, head + summary + "\n" + frames);
+    }
+
+    // Close ups, three quarters from the front, of the raccoon on the manhole
+    // in the pose whose tail sank furthest in the baseline tail check
+    // (Climb_Down frame 52), soles planted on the cover. Before: the rig as imported, tail skinned to
+    // the thighs. After: StandOnSpot's tail bone and lift. Writes
+    // /tmp/juicy-tail-before.png and /tmp/juicy-tail-after.png. Leaves the
+    // scene unsaved.
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.TailStill -quit
+    const string TailStillClip = "Climb_Down";
+    const int TailStillFrame = 52;
+
+    public static void TailStill()
+    {
+        OpenAlley();
+        var raccoon = UnityEngine.GameObject.Find("Raccoon_Mascot");
+        var animator = raccoon.GetComponentInChildren<UnityEngine.Animator>();
+        var stand = raccoon.GetComponent<StandOnSpot>();
+        var clip = RaccoonClip(TailStillClip);
+        var spot = stand.Spot;
+        var camera = UnityEngine.Camera.main;
+        camera.transform.position = spot + new UnityEngine.Vector3(0.9f, 0.3f, -1.1f);
+        camera.transform.LookAt(spot + UnityEngine.Vector3.up * 0.25f);
+
+        PoseRaccoon(animator, clip, TailStillFrame / clip.frameRate);
+        var skin = stand.Skin;
+        var baked = new UnityEngine.Mesh();
+        skin.BakeMesh(baked, true);
+        var vertices = baked.vertices;
+        float sole = float.MaxValue;
+        var feet = new System.Collections.Generic.HashSet<UnityEngine.Transform>
+        {
+            animator.GetBoneTransform(UnityEngine.HumanBodyBones.LeftFoot), animator.GetBoneTransform(UnityEngine.HumanBodyBones.RightFoot),
+            animator.GetBoneTransform(UnityEngine.HumanBodyBones.LeftToes), animator.GetBoneTransform(UnityEngine.HumanBodyBones.RightToes),
+        };
+        var weights = skin.sharedMesh.boneWeights;
+        for (int i = 0; i < vertices.Length; i++)
+            if (feet.Contains(skin.bones[weights[i].boneIndex0]))
+                sole = UnityEngine.Mathf.Min(sole, skin.transform.TransformPoint(vertices[i]).y);
+        UnityEngine.Object.DestroyImmediate(baked);
+        var stance = (animator.GetBoneTransform(UnityEngine.HumanBodyBones.LeftFoot).position + animator.GetBoneTransform(UnityEngine.HumanBodyBones.RightFoot).position) * 0.5f;
+        raccoon.transform.position += new UnityEngine.Vector3(spot.x - stance.x, spot.y - sole, spot.z - stance.z);
+        CaptureBaked(skin, "/tmp/juicy-tail-before.png");
+
+        stand.Prepare();
+        stand.Settle(0f);
+        CaptureBaked(skin, "/tmp/juicy-tail-after.png");
+    }
+
+    // The editor does not re-skin a skinned mesh between two renders in one
+    // frame, so the still renders a baked copy of the current pose instead.
+    static void CaptureBaked(UnityEngine.SkinnedMeshRenderer skin, string path)
+    {
+        var baked = new UnityEngine.Mesh();
+        skin.BakeMesh(baked, true);
+        var copy = new UnityEngine.GameObject("Baked_Pose");
+        copy.transform.SetParent(skin.transform, false);
+        copy.AddComponent<UnityEngine.MeshFilter>().sharedMesh = baked;
+        copy.AddComponent<UnityEngine.MeshRenderer>().sharedMaterials = skin.sharedMaterials;
+        skin.enabled = false;
+        AlleySceneBuilder.Capture(path);
+        skin.enabled = true;
+        UnityEngine.Object.DestroyImmediate(copy);
+        UnityEngine.Object.DestroyImmediate(baked);
+    }
+
+    static UnityEngine.AnimationClip RaccoonClip(string name)
+    {
+        string path = "Assets/Art/Alley/Raccoon/Raccoon_" + name + ".fbx";
+        foreach (var asset in AssetDatabase.LoadAllAssetsAtPath(path))
+            if (asset is UnityEngine.AnimationClip clip && !clip.name.StartsWith("__preview")) return clip;
+        throw new System.InvalidOperationException("No clip in " + path);
+    }
+
+    // Samples the clip without letting it move the root, as play does with
+    // root motion off.
+    static void PoseRaccoon(UnityEngine.Animator animator, UnityEngine.AnimationClip clip, float time)
+    {
+        var root = animator.transform;
+        var position = root.position;
+        var rotation = root.rotation;
+        clip.SampleAnimation(animator.gameObject, time);
+        root.SetPositionAndRotation(position, rotation);
+    }
+
+    static void LowestPoints(StandOnSpot stand, out float tail, out float sole)
+    {
+        var skin = stand.Skin;
+        var baked = new UnityEngine.Mesh();
+        skin.BakeMesh(baked, true);
+        var vertices = baked.vertices;
+        tail = float.MaxValue;
+        sole = float.MaxValue;
+        foreach (int i in stand.TailVertices) tail = UnityEngine.Mathf.Min(tail, skin.transform.TransformPoint(vertices[i]).y);
+        foreach (int i in stand.FootVertices) sole = UnityEngine.Mathf.Min(sole, skin.transform.TransformPoint(vertices[i]).y);
+        UnityEngine.Object.DestroyImmediate(baked);
+    }
+
+    static float CoverTop()
+    {
+        var parts = UnityEngine.GameObject.Find("Manhole").GetComponentsInChildren<UnityEngine.MeshRenderer>();
+        var bounds = parts[0].bounds;
+        foreach (var part in parts) bounds.Encapsulate(part.bounds);
+        return bounds.max.y;
+    }
+
     // Prints where the named children of the built models sit, so code can
     // be checked against how Blender axes arrive in Unity.
     public static void Inspect()

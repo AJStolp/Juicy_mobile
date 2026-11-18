@@ -70,6 +70,8 @@ $U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit   # street
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Bot              # no -quit; exits when the report is written
 $U -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck        # no -quit
 $U -batchmode -projectPath . -executeMethod AlleyBatch.PlinkoClearance -quit   # prop overlap with the Plinko board, open and folded
+$U -batchmode -projectPath . -executeMethod AlleyBatch.TailCheck -quit   # raccoon tail and soles against the manhole top, every clip frame
+$U -batchmode -projectPath . -executeMethod AlleyBatch.TailStill -quit   # raccoon close up in the worst tail pose, before and after
 $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults <file>
 ```
 
