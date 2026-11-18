@@ -30,6 +30,9 @@ public static class AlleyBotRun
     static int maxDynamite;
     static readonly Dictionary<string, float> shots = new Dictionary<string, float>();
     static float nextProgress;
+    static int hacks;
+    static int perfectHacks;
+    static int hackSteps;
 
     static AlleyBotRun()
     {
@@ -79,6 +82,8 @@ public static class AlleyBotRun
         }
         maxDynamite = Mathf.Max(maxDynamite, director.Rules.GearCount(GearKind.Dynamite));
         if (now >= 12f) Shoot("street", now, 0f);
+        var hack = Object.FindAnyObjectByType<AlleyHack>();
+        if (hack != null && hack.Running) Shoot("hack", now, 1.5f);
 
         var due = new List<string>();
         foreach (var pair in shots)
@@ -110,6 +115,7 @@ public static class AlleyBotRun
             events.Add(Time.time.ToString("0") + "s stage " + stage + " locked");
             if (stage == 0) Shoot("bolt", Time.time, 0.35f);
         };
+        HookHack(director);
         director.Vault.RolledBack += (stage, fraction) => events.Add(Time.time.ToString("0") + "s rollback on stage " + stage + " to " + fraction.ToString("0.00"));
         director.Vault.Cracked += heist =>
         {
@@ -118,6 +124,29 @@ public static class AlleyBotRun
             Shoot("crack", Time.time, 2.4f);
         };
         director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg);
+    }
+
+    // Until the clue trip plays in the alley nothing finds clues, so the bot
+    // finds one per leg at a random tier; that fills a cycle every 3 legs (4
+    // from heist 2) and the hack runs. Each hack's steps and payout are logged.
+    static void HookHack(AlleyChuteDirector director)
+    {
+        director.Rules.LegAdvanced += (leg, chutes) =>
+        {
+            Clue? clue = director.Clues.ClueFound(Random.Range(0, ClueRules.MaxTier + 1));
+            if (clue.HasValue)
+                events.Add(Time.time.ToString("0") + "s clue " + director.Clues.Count + "/" + director.Clues.CluesNeeded + " symbol " + clue.Value.Symbol + " tier " + clue.Value.Tier);
+        };
+        var hack = Object.FindAnyObjectByType<AlleyHack>();
+        if (hack == null) return;
+        hack.Finished += (reward, clues) =>
+        {
+            hacks++;
+            if (reward.Perfect) perfectHacks++;
+            hackSteps += reward.Steps;
+            events.Add(Time.time.ToString("0") + "s hack steps " + reward.Steps + "/" + clues + (reward.Perfect ? " perfect" : " failed") +
+                " paid cash " + reward.Cash.ToString("0") + " bribes " + reward.Bribes + " drills " + reward.Drills + " vault turns " + reward.Turns);
+        };
     }
 
     // Queues a capture once per name, delay seconds from now.
@@ -144,6 +173,8 @@ public static class AlleyBotRun
         foreach (float t in lockTimes) { gaps.Append((t - last).ToString("0") + "s "); last = t; }
         log.AppendLine("seconds per stage " + gaps);
         if (door != null) log.AppendLine("door pops " + door.Pops + " rollbacks " + door.Rollbacks + " cracks " + door.Cracks);
+        log.AppendLine("hacks " + hacks + " perfect " + perfectHacks + " failed " + (hacks - perfectHacks) + " steps " + hackSteps +
+            " clues waiting " + director.Clues.Count + "/" + director.Clues.CluesNeeded);
         log.AppendLine("gear dynamite " + rules.GearCount(GearKind.Dynamite) + " (max held " + maxDynamite + ", cap " + rules.DynamiteCap + ")" +
             " drill " + rules.GearCount(GearKind.Drill) + " bribe " + rules.GearCount(GearKind.Bribe));
         if (reactions != null) log.AppendLine("raccoon pushHeavy " + reactions.PushHeavies + " busts " + reactions.Busts);

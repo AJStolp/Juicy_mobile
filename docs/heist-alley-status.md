@@ -16,15 +16,15 @@ A diegetic color sort game with casino style juice: everything happens inside th
 - A correct sort pays 50 times the streak tier (x2 at 5, x3 at 10, x5 at 15). Gold pays 150. HEIST pays 25,000; the other words pay 2,500.
 - Mistakes raise heat. At 100 heat you are busted: the stage loot is lost, the screen clears, and you stay on the same leg.
 - The balance rolls up on the vault timer's screen.
-- **The vault is the objective.** Every vat fill turns the vault door one step. It has seven stages: four corner bolts, the outer ring, the inner ring and the wheel. A full stage locks for good. A bust takes back half of the stage in play, never a locked one. Locking the wheel cracks the vault, and the next heist starts on a fresh door. Turns per stage are 9, 16, then 28 from the third vault on (`VaultProgress.TurnsByHeist`). Bot runs crack vault 1 in about 20 game minutes.
-- **The clue hack replaces the old bonus round** (`game-design.md`). Its rules are in `ClueRules.cs`; until the clue trip is in the scene, nothing runs between legs.
+- **The vault is the objective.** Every vat fill turns the vault door one step. It has seven stages. The door is the graffiti building's own steel door: the first four stages slide its three locking bars and then its handle, the fifth turns its gear lock, and its wheel turns a quarter with every stage. A full stage locks for good. A bust takes back half of the stage in play, never a locked one. Locking the wheel cracks the vault, and the next heist starts on a fresh door. Turns per stage are 9, 16, then 28 from the third vault on (`VaultProgress.TurnsByHeist`). Bot runs crack vault 1 in about 12 game minutes.
+- **The clue hack replaces the old bonus round** (`game-design.md`). Its rules are in `ClueRules.cs`. When a clue cycle is full (3 clues, 4 from the second heist), the camera holds on a keypad beside the vault door and the player taps the clues in the order they were found. Each correct tap climbs one step of the reward ladder, and the first wrong tap ends it (`AlleyHack.cs`). The clue trip that finds clues between legs is still on its branch (T-020), so until it merges nothing collects clues in play.
 - **Swiping dynamite away pockets it** as gear, up to 3. Gear is only counted so far; nothing spends it yet.
 - **Progress saves** between sittings: vault stage and turns, cash and gear (`HeistSave`, in PlayerPrefs). Legs, chutes, heat and streak start fresh each sitting.
 
 ## How the alley reacts
 
 - The raccoon stands centered on the manhole in his torch idle. He does a light push on sorts and a heavy push on vat fills, vault stages and the crack.
-- The vault door creeps forward as turns come in and grinds back slowly on a bust. Bolts back out and pop off as their stage locks; the rings and wheel turn; the keyhole glows greener as the vault fills. Locks, rollbacks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
+- The vault door creeps forward as turns come in and grinds back slowly on a bust. The bars and handle slide as their stage fills, the gear lock turns, and the wheel turns a quarter per stage. The HEIST word sign sits centered above the door frame, clear of the door. Locks, rollbacks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
 - The chests glow brighter as their vat fills, flash orange on a mistake, and snap their lid open as an item drops in.
 - The police strobe and the vault alarms run faster and brighter with heat. A bust shakes the camera. `AlleyCameraRig` owns every camera move: shakes, pushes, and holds on a pose.
 - Lamps flicker, the wall lamps hum, steam rises from the manhole, and clouds drift across the moon.
@@ -39,8 +39,9 @@ A diegetic color sort game with casino style juice: everything happens inside th
 | Vault door, camera moves | `AlleyVaultDoor.cs`, `AlleyCameraRig.cs` in `Assets/Scripts/Alley/` |
 | Falling items, swipes, chests, reactions, score | `Assets/Scripts/Alley/` |
 | Keeping the torch upright and the raccoon on his spot | `TorchGrip.cs`, `StandOnSpot.cs` in `Assets/Scripts/Alley/` |
-| Scene builder (layout, lighting, gameplay wiring) | `Assets/Editor/AlleySceneBuilder.cs`; the vault door and word sign in `AlleySceneBuilder.Heist.cs` |
-| Art built from code | `ArtSource/Alley/`: `build_deposit_chests.py`, `build_alley_road.py`, `build_night_sky.py`, `build_vault_door.py` |
+| Scene builder (layout, lighting, gameplay wiring) | `Assets/Editor/AlleySceneBuilder.cs`; the vault door, word sign and hack keypad in `AlleySceneBuilder.Heist.cs` |
+| Vault door parts | `ArtSource/Alley/import_glb.py --vault-parts` (with `facade_vault_parts.py`) splits the facade model's own door into moving parts |
+| Art built from code | `ArtSource/Alley/`: `build_deposit_chests.py`, `build_alley_road.py`, `build_night_sky.py` |
 | Turning a Tripo or fal.ai GLB into an alley asset | `ArtSource/Alley/import_glb.py` |
 
 The art scripts run headless in Blender, for example `blender -b -P ArtSource/Alley/build_alley_road.py`. `import_glb.py` takes `--cut` to strip stray geometry and `--untextured` for models colored in game.
@@ -82,4 +83,4 @@ Running tools in the open editor: write an `AlleyBatch` method name to `/tmp/jui
 
 ## TLDR
 
-The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bolts pop, rings and wheel turn, busts grind the current stage back, and cracking it opens the door. The clue hack, which replaces the old bonus round, has its rules in the core but is not in the scene yet. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).
+The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bars slide, the gear and wheel turn, busts grind the current stage back, and cracking it opens the door. When a clue cycle is full, the player taps the clues in order on a keypad beside the vault for a reward ladder. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).

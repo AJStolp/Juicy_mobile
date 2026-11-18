@@ -2,25 +2,31 @@
 #   Assets/Art/Alley/<Name>.fbx and Assets/Art/Alley/Textures/<Name>_basecolor.jpg
 # AlleySceneBuilder.AssignEnvironmentLit then builds the URP material.
 #
-#   blender -b -P ArtSource/Alley/import_glb.py -- <file.glb> <Name> [--cut x0 x1 y0 y1 z0 z1] [--untextured] [--preview dir]
+#   blender -b -P ArtSource/Alley/import_glb.py -- <file.glb> <Name> [--cut x0 x1 y0 y1 z0 z1] [--untextured] [--vault-parts] [--preview dir]
 #
 # --untextured is for models colored at runtime, like the gem diamond; no
 # texture is written and the scene code supplies the material.
 #
 # --cut deletes faces whose vertices all sit inside the box (glTF meters,
 # Blender axes). Use it to strip generator artifacts such as stray fins.
+#
+# --vault-parts splits the graffiti facade's own vault door into moving parts
+# (facade_vault_parts.py). The facade is built with:
+#   blender -b -P ArtSource/Alley/import_glb.py -- "graffiti vault door 3d model.glb" SM_GraffitiVaultDoor --vault-parts
 import bpy, bmesh, sys, os
 from mathutils import Vector
 
 argv = sys.argv[sys.argv.index("--") + 1:]
 src, name = argv[0], argv[1]
-cuts, preview, untextured = [], None, False
+cuts, preview, untextured, vault_parts = [], None, False, False
 i = 2
 while i < len(argv):
     if argv[i] == "--cut":
         cuts.append([float(v) for v in argv[i + 1:i + 7]]); i += 7
     elif argv[i] == "--untextured":
         untextured = True; i += 1
+    elif argv[i] == "--vault-parts":
+        vault_parts = True; i += 1
     elif argv[i] == "--preview":
         preview = argv[i + 1]; i += 2
     else:
@@ -52,6 +58,18 @@ for mat in obj.data.materials:
         for node in mat.node_tree.nodes:
             if node.type == 'TEX_IMAGE' and node.image:
                 image = node.image
+if vault_parts:
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import facade_vault_parts
+    # The facade mesh is the FBX root so Unity puts its renderer on the
+    # prefab root, with the door parts under it.
+    world = obj.matrix_world.copy()
+    obj.parent = None
+    obj.matrix_world = world
+    for other in [o for o in bpy.context.scene.objects if o.type != 'MESH']:
+        bpy.data.objects.remove(other)
+    facade_vault_parts.split(bpy, obj, image)
+
 tex_path = None
 if not untextured:
     if image is None:
@@ -63,9 +81,13 @@ if not untextured:
 
 # Bake the axis conversion into the mesh so the Unity root has no -90 X
 # rotation; scene tools set root rotation directly and would tip it over.
+# The vault parts are a hierarchy, which the exporter's bake gets wrong, so
+# they bake their own.
+if vault_parts:
+    facade_vault_parts.bake_axes(bpy, obj)
 bpy.ops.export_scene.fbx(filepath=os.path.join(art, name + ".fbx"), use_selection=False,
                          path_mode='STRIP', embed_textures=False, bake_anim=False,
-                         bake_space_transform=True, apply_scale_options='FBX_SCALE_ALL')
+                         bake_space_transform=not vault_parts, apply_scale_options='FBX_SCALE_ALL')
 print("EXPORTED", name, tex_path)
 
 if preview:
