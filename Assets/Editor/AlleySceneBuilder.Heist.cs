@@ -15,19 +15,6 @@ public static partial class AlleySceneBuilder
     const string CoinPhysicsPath = MaterialRoot + "/PM_PlinkoCoin.physicMaterial";
     static readonly string[] DoorParts = { "Bolt_0", "Bolt_1", "Bolt_2", "Bolt_3", "Ring_Outer", "Ring_Inner", "Wheel", "Keyhole" };
 
-    // Two door sizes, switchable to compare: set into the painted doorway of
-    // the graffiti facade, or a big door mounted proud of it so the bolts and
-    // rings read on a phone.
-    const string VaultFitPref = "Juicy.Alley.VaultFitLarge";
-    static bool VaultLarge { get { return EditorPrefs.GetBool(VaultFitPref, false); } }
-
-    [MenuItem("Juicy/Alley/Vault/Use Doorway Size")]
-    static void UseDoorwayVault() { EditorPrefs.SetBool(VaultFitPref, false); WireGameplayInScene(); }
-    [MenuItem("Juicy/Alley/Vault/Use Large Door")]
-    static void UseLargeVault() { EditorPrefs.SetBool(VaultFitPref, true); WireGameplayInScene(); }
-
-    public static void SetVaultLarge(bool large) { EditorPrefs.SetBool(VaultFitPref, large); }
-
     public static void Capture(string path) { CaptureAlley(path); }
 
     const int WordSignSlots = 6;
@@ -113,8 +100,9 @@ public static partial class AlleySceneBuilder
         if (!TryBounds(facade, out fb)) return null;
 
         RemapMaterials(VaultDoorModel, VaultDoorMaterials());
-        // The painted doorway is about a third of the facade's width.
-        float width = VaultLarge ? fb.size.x * 0.56f : fb.size.x * 0.33f;
+        // A big door mounted proud of the graffiti facade, so the bolts and
+        // rings read on a phone.
+        float width = fb.size.x * 0.56f;
         Vector3 face = SurfacePoint(facade, new Vector3(fb.center.x, fb.min.y + fb.size.y * 0.3f, fb.center.z));
         GameObject vault = PlaceWide(VaultDoorModel, "Vault_Door", parent, new Vector3(fb.center.x, fb.min.y, face.z), width, 180f);
         Bounds vb;
