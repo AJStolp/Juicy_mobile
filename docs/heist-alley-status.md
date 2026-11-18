@@ -70,6 +70,8 @@ $U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit   # street
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Bot              # no -quit; exits when the report is written
 $U -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck        # no -quit
 $U -batchmode -projectPath . -executeMethod AlleyBatch.PlinkoClearance -quit   # prop overlap with the Plinko board, open and folded
+$U -batchmode -projectPath . -executeMethod AlleyBatch.PlinkoLooks -quit   # each Plinko look open, /tmp/juicy-plinko-<look>.png, and side by side in /tmp/juicy-plinko-looks.png
+$U -batchmode -projectPath . -executeMethod AlleyBatch.PlinkoClip -plinkoLook Arcade   # no -quit; a three coin round as frames in /tmp/juicy-plinko-clip/
 $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults <file>
 ```
 

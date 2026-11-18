@@ -64,6 +64,18 @@ public static class AlleyBatch
         camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
         camera.transform.LookAt(door.Focus);
         AlleySceneBuilder.Capture("/tmp/juicy-vault-large-close.png");
+        camera.transform.SetPositionAndRotation(home, homeRotation);
+        CapturePlinkoOpen("/tmp/juicy-plinko-open.png");
+        EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
+    }
+
+    // Swings the Plinko board open, renders it from the Plinko camera spot,
+    // and puts the board and camera back.
+    static void CapturePlinkoOpen(string path)
+    {
+        var camera = UnityEngine.Camera.main;
+        var home = camera.transform.position;
+        var homeRotation = camera.transform.rotation;
         var hinge = UnityEngine.GameObject.Find("Plinko_Hinge").transform;
         var closed = hinge.rotation;
         hinge.rotation = UnityEngine.Quaternion.Euler(0f, 152f, 0f);
@@ -73,13 +85,160 @@ public static class AlleyBatch
         camera.transform.LookAt(floor.position + UnityEngine.Vector3.up * 0.715f);
         float fov = camera.fieldOfView;
         camera.fieldOfView = 58f;
-        UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 2.5f;
-        AlleySceneBuilder.Capture("/tmp/juicy-plinko-open.png");
+        var light = UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>();
+        light.intensity = 2.5f;
+        AlleySceneBuilder.Capture(path);
         camera.fieldOfView = fov;
-        UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 0f;
+        light.intensity = 0f;
         hinge.rotation = closed;
         camera.transform.SetPositionAndRotation(home, homeRotation);
-        EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
+    }
+
+    // The Plinko board's looks (T-002). Renders each look swung open from the
+    // Plinko camera spot to /tmp/juicy-plinko-<look>.png, at 1080x1920, with
+    // the arcade bulbs lit down one coin's path. Then lays the three side by
+    // side at half size, Gold, Arcade, Scrap from left to right, in
+    // /tmp/juicy-plinko-looks.png. Leaves the scene on the look it started on.
+    static readonly string[] StruckPins = { "Pin_0_4", "Pin_1_4", "Pin_2_5", "Pin_3_4", "Pin_4_4", "Pin_5_3", "Pin_6_3", "Pin_7_3" };
+
+    public static void PlinkoLooks()
+    {
+        OpenAlley();
+        var kept = AlleySceneBuilder.CurrentPlinkoLook;
+        var shots = new System.Collections.Generic.List<string>();
+        foreach (AlleySceneBuilder.PlinkoLook look in System.Enum.GetValues(typeof(AlleySceneBuilder.PlinkoLook)))
+        {
+            AlleySceneBuilder.SetPlinkoLook(look);
+            AlleySceneBuilder.WireGameplayInScene();
+            var bulbs = UnityEngine.Object.FindAnyObjectByType<AlleyPlinkoBulbs>();
+            if (bulbs != null)
+            {
+                // The newest strike is the brightest; earlier ones have faded.
+                foreach (string pin in StruckPins)
+                {
+                    bulbs.Fade(0.04f);
+                    bulbs.Flash(bulbs.transform.Find(pin));
+                }
+            }
+            string path = "/tmp/juicy-plinko-" + look.ToString().ToLowerInvariant() + ".png";
+            CapturePlinkoOpen(path);
+            shots.Add(path);
+        }
+        SideBySide(shots, "/tmp/juicy-plinko-looks.png");
+        AlleySceneBuilder.SetPlinkoLook(kept);
+        AlleySceneBuilder.WireGameplayInScene();
+    }
+
+    // Halves each picture and lays them left to right in one image.
+    static void SideBySide(System.Collections.Generic.List<string> paths, string output)
+    {
+        var images = new System.Collections.Generic.List<UnityEngine.Texture2D>();
+        foreach (string path in paths)
+        {
+            var image = new UnityEngine.Texture2D(2, 2);
+            UnityEngine.ImageConversion.LoadImage(image, System.IO.File.ReadAllBytes(path));
+            images.Add(image);
+        }
+        int w = images[0].width / 2, h = images[0].height / 2;
+        var sheet = new UnityEngine.Texture2D(w * images.Count, h, UnityEngine.TextureFormat.RGB24, false);
+        for (int i = 0; i < images.Count; i++)
+        {
+            UnityEngine.Color[] source = images[i].GetPixels();
+            int sw = images[i].width;
+            var half = new UnityEngine.Color[w * h];
+            for (int y = 0; y < h; y++)
+                for (int x = 0; x < w; x++)
+                {
+                    int s = 2 * y * sw + 2 * x;
+                    half[y * w + x] = (source[s] + source[s + 1] + source[s + sw] + source[s + sw + 1]) * 0.25f;
+                }
+            sheet.SetPixels(i * w, 0, w, h, half);
+            UnityEngine.Object.DestroyImmediate(images[i]);
+        }
+        sheet.Apply();
+        System.IO.File.WriteAllBytes(output, UnityEngine.ImageConversion.EncodeToPNG(sheet));
+        UnityEngine.Object.DestroyImmediate(sheet);
+    }
+
+    // Records a Plinko round of three coins as frames, on the look named by
+    // -plinkoLook (Gold, Arcade or Scrap) or else the current one, at a fixed
+    // 30 frames a second. Frames land in /tmp/juicy-plinko-clip/; make the mp4
+    // with ffmpeg -framerate 30 -i /tmp/juicy-plinko-clip/frame_%03d.png
+    // -pix_fmt yuv420p out.mp4. Leaves the scene and the look as they were.
+    // Leave off -quit; it exits when the round ends.
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.PlinkoClip -plinkoLook Arcade
+    const string ClipFrames = "/tmp/juicy-plinko-clip";
+    const int ClipCoins = 3;
+    const int ClipMaxFrames = 600;
+
+    public static void PlinkoClip()
+    {
+        OpenAlley();
+        SessionState.SetInt("JuicyPlinkoClipKept", (int)AlleySceneBuilder.CurrentPlinkoLook);
+        string[] args = System.Environment.GetCommandLineArgs();
+        for (int i = 0; i + 1 < args.Length; i++)
+            if (args[i] == "-plinkoLook")
+                AlleySceneBuilder.SetPlinkoLook((AlleySceneBuilder.PlinkoLook)System.Enum.Parse(typeof(AlleySceneBuilder.PlinkoLook), args[i + 1], true));
+        AlleySceneBuilder.WireGameplayInScene();
+        if (System.IO.Directory.Exists(ClipFrames)) System.IO.Directory.Delete(ClipFrames, true);
+        System.IO.Directory.CreateDirectory(ClipFrames);
+        System.IO.File.WriteAllText("/tmp/juicy-alley-bot", "clip");
+        SessionState.SetInt("JuicyPlinkoClip", 1);
+        EditorApplication.update += PlinkoClipTick;
+        EditorApplication.isPlaying = true;
+    }
+
+    [InitializeOnLoadMethod]
+    static void ResumePlinkoClip()
+    {
+        if (SessionState.GetInt("JuicyPlinkoClip", 0) != 0) EditorApplication.update += PlinkoClipTick;
+    }
+
+    static int clipLastFrame = -1;
+
+    static void PlinkoClipTick()
+    {
+        int step = SessionState.GetInt("JuicyPlinkoClip", 0);
+        var plinko = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyPlinko>() : null;
+        if (step == 1 && plinko != null && UnityEngine.Time.frameCount > 5)
+        {
+            UnityEngine.Time.captureFramerate = 30;
+            plinko.Simulate(ClipCoins);
+            SessionState.SetInt("JuicyPlinkoClipFrame", 0);
+            SessionState.SetInt("JuicyPlinkoClip", 2);
+            return;
+        }
+        if (step == 2 && plinko != null)
+        {
+            // One picture per game frame.
+            if (UnityEngine.Time.frameCount == clipLastFrame) return;
+            clipLastFrame = UnityEngine.Time.frameCount;
+            int frame = SessionState.GetInt("JuicyPlinkoClipFrame", 0);
+            AlleySceneBuilder.Capture(ClipFrames + "/frame_" + frame.ToString("000") + ".png");
+            SessionState.SetInt("JuicyPlinkoClipFrame", frame + 1);
+            if ((plinko.Rounds > 0 && !plinko.Running) || frame + 1 >= ClipMaxFrames)
+            {
+                System.IO.File.WriteAllText(ClipFrames + "/report.txt", "look " + AlleySceneBuilder.CurrentPlinkoLook + " frames " + (frame + 1) +
+                    " coins " + plinko.CoinsDropped + " pin hits " + plinko.PinHits + "\n");
+                UnityEngine.Time.captureFramerate = 0;
+                SessionState.SetInt("JuicyPlinkoClip", 3);
+                EditorApplication.isPlaying = false;
+            }
+            return;
+        }
+        if (step == 3 && !EditorApplication.isPlaying)
+        {
+            SessionState.SetInt("JuicyPlinkoClip", 0);
+            EditorApplication.update -= PlinkoClipTick;
+            System.IO.File.Delete("/tmp/juicy-alley-bot");
+            var kept = (AlleySceneBuilder.PlinkoLook)SessionState.GetInt("JuicyPlinkoClipKept", 0);
+            if (kept != AlleySceneBuilder.CurrentPlinkoLook)
+            {
+                AlleySceneBuilder.SetPlinkoLook(kept);
+                AlleySceneBuilder.WireGameplayInScene();
+            }
+            if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(0);
+        }
     }
 
     // Renders the word sign over the vault with HEIST part spelled.

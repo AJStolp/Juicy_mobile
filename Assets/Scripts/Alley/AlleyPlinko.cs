@@ -43,6 +43,7 @@ public class AlleyPlinko : MonoBehaviour
     [SerializeField] float maxSpeed = 0.9f;
 
     readonly List<Rigidbody> coins = new List<Rigidbody>();
+    AlleyPlinkoBulbs bulbs;
     Quaternion hingeClosed;
     Rigidbody active;
     bool aiming;
@@ -82,6 +83,8 @@ public class AlleyPlinko : MonoBehaviour
     {
         hingeClosed = hinge.localRotation;
         view = Camera.main;
+        // Only the street arcade look has pin bulbs.
+        bulbs = board.GetComponentInChildren<AlleyPlinkoBulbs>(true);
         coinTemplate.gameObject.SetActive(false);
         if (boardLight != null) boardLight.intensity = 0f;
     }
@@ -104,12 +107,15 @@ public class AlleyPlinko : MonoBehaviour
 
     Transform lastPin;
 
-    // One kick per pin: rolling around a pin fires several contacts.
+    // One kick, tick and flash per pin: rolling around a pin fires several
+    // contacts.
     public void OnPinHit(Rigidbody coin, Transform pin)
     {
         if (coin != active || pin == lastPin) return;
         lastPin = pin;
         PinHits++;
+        JuicyAudioHooks.Tick();
+        if (bulbs != null) bulbs.Flash(pin);
         coin.linearVelocity += Right * (Random.Range(-pinScatter, pinScatter) * Scale);
     }
 

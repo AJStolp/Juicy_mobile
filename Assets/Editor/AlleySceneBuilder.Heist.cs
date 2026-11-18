@@ -6,7 +6,8 @@ using Object = UnityEngine.Object;
 
 // The vault door progress meter and the Plinko board. Both are built from
 // ArtSource/Alley (build_vault_door.py, build_plinko_board.py) and wired to
-// the chute director's rules.
+// the chute director's rules. The board's switchable looks are in
+// AlleySceneBuilder.PlinkoLooks.cs.
 public static partial class AlleySceneBuilder
 {
     const string VaultDoorModel = Art + "SM_VaultDoor.fbx";
@@ -200,6 +201,8 @@ public static partial class AlleySceneBuilder
         Transform floor = board.transform.Find("Floor");
         Transform railLeft = board.transform.Find("Rail_L");
         Transform railRight = board.transform.Find("Rail_R");
+        PlinkoLook look = CurrentPlinkoLook;
+        DressPlinko(look, board.transform, floor, railLeft, railRight);
 
         GameObject coinObject = (GameObject)PrefabUtility.InstantiatePrefab(AssetDatabase.LoadAssetAtPath<GameObject>(PlinkoCoinModel), root.transform);
         coinObject.name = "Plinko_Coin_Template";
@@ -236,7 +239,7 @@ public static partial class AlleySceneBuilder
         GameObject lightObject = Empty("Plinko_Light", root.transform, center + front * 0.9f + Vector3.up * 0.6f);
         Light boardLight = lightObject.AddComponent<Light>();
         boardLight.type = LightType.Point;
-        boardLight.color = new Color(1f, 0.88f, 0.7f);
+        boardLight.color = PlinkoLightColor(look);
         boardLight.range = 3f;
         boardLight.shadows = LightShadows.None;
         hinge.transform.rotation = Quaternion.Euler(0f, 90f, 0f);

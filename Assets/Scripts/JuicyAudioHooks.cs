@@ -10,6 +10,7 @@ public class JuicyAudioHooks : MonoBehaviour
     AudioClip sort;
     AudioClip chime;
     AudioClip squeal;
+    AudioClip tick;
 
     public static void Ensure()
     {
@@ -33,10 +34,12 @@ public class JuicyAudioHooks : MonoBehaviour
         sort = Resources.Load<AudioClip>("Audio/sort_clunk");
         chime = Resources.Load<AudioClip>("Audio/money_chime");
         squeal = Resources.Load<AudioClip>("Audio/tire_squeal");
+        tick = Resources.Load<AudioClip>("Audio/coin_tick");
         if (vault == null) Debug.LogWarning("Heist audio missing vault_unbolt.");
         if (sort == null) Debug.LogWarning("Heist audio missing sort_clunk.");
         if (chime == null) Debug.LogWarning("Heist audio missing money_chime.");
         if (squeal == null) Debug.LogWarning("Heist audio missing tire_squeal.");
+        if (tick == null) Debug.LogWarning("Heist audio missing coin_tick.");
     }
 
     void OnDestroy()
@@ -66,6 +69,13 @@ public class JuicyAudioHooks : MonoBehaviour
     {
         Ensure();
         Instance.Play(Instance.squeal, 1f);
+    }
+
+    // A Plinko coin striking a pin.
+    public static void Tick()
+    {
+        Ensure();
+        Instance.Play(Instance.tick, 0.5f);
     }
 
     void Play(AudioClip clip, float volume)
