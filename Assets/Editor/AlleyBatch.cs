@@ -50,44 +50,35 @@ public static class AlleyBatch
         AlleySceneBuilder.WireGameplayInScene();
     }
 
-    // Wires the scene with each vault door size and renders the street, a
-    // close look at the door, and the Plinko board swung open. Leaves the
-    // scene on the doorway size.
+    // Wires the scene and renders the street with the vault door, a close
+    // look at the door, and the Plinko board swung open.
     public static void Previews()
     {
         OpenAlley();
-        foreach (bool large in new[] { true, false })
-        {
-            string tag = large ? "large" : "doorway";
-            AlleySceneBuilder.SetVaultLarge(large);
-            AlleySceneBuilder.WireGameplayInScene();
-            System.IO.File.Copy("/tmp/juicy-alley-light.png", "/tmp/juicy-vault-" + tag + ".png", true);
-            var camera = UnityEngine.Camera.main;
-            var home = camera.transform.position;
-            var homeRotation = camera.transform.rotation;
-            var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
-            camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
-            camera.transform.LookAt(door.Focus);
-            AlleySceneBuilder.Capture("/tmp/juicy-vault-" + tag + "-close.png");
-            if (!large)
-            {
-                var hinge = UnityEngine.GameObject.Find("Plinko_Hinge").transform;
-                var closed = hinge.rotation;
-                hinge.rotation = UnityEngine.Quaternion.Euler(0f, 152f, 0f);
-                var view = UnityEngine.GameObject.Find("Plinko_View").transform;
-                var floor = UnityEngine.GameObject.Find("Plinko_Board").transform.Find("Floor");
-                camera.transform.position = view.position;
-                camera.transform.LookAt(floor.position + UnityEngine.Vector3.up * 0.715f);
-                float fov = camera.fieldOfView;
-                camera.fieldOfView = 58f;
-                UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 2.5f;
-                AlleySceneBuilder.Capture("/tmp/juicy-plinko-open.png");
-                camera.fieldOfView = fov;
-                UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 0f;
-                hinge.rotation = closed;
-            }
-            camera.transform.SetPositionAndRotation(home, homeRotation);
-        }
+        AlleySceneBuilder.WireGameplayInScene();
+        System.IO.File.Copy("/tmp/juicy-alley-light.png", "/tmp/juicy-vault-large.png", true);
+        var camera = UnityEngine.Camera.main;
+        var home = camera.transform.position;
+        var homeRotation = camera.transform.rotation;
+        var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
+        camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
+        camera.transform.LookAt(door.Focus);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-large-close.png");
+        var hinge = UnityEngine.GameObject.Find("Plinko_Hinge").transform;
+        var closed = hinge.rotation;
+        hinge.rotation = UnityEngine.Quaternion.Euler(0f, 152f, 0f);
+        var view = UnityEngine.GameObject.Find("Plinko_View").transform;
+        var floor = UnityEngine.GameObject.Find("Plinko_Board").transform.Find("Floor");
+        camera.transform.position = view.position;
+        camera.transform.LookAt(floor.position + UnityEngine.Vector3.up * 0.715f);
+        float fov = camera.fieldOfView;
+        camera.fieldOfView = 58f;
+        UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 2.5f;
+        AlleySceneBuilder.Capture("/tmp/juicy-plinko-open.png");
+        camera.fieldOfView = fov;
+        UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 0f;
+        hinge.rotation = closed;
+        camera.transform.SetPositionAndRotation(home, homeRotation);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 

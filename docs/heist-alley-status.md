@@ -66,7 +66,7 @@ Unity only picks up script changes when its window has focus and refreshes (Cmd+
 ```
 U=/Applications/Unity/Hub/Editor/6000.3.10f1/Unity.app/Contents/MacOS/Unity
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Wire -quit
-$U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit   # both door sizes, door close up, Plinko open
+$U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit   # street with the vault door, door close up, Plinko open
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Bot              # no -quit; exits when the report is written
 $U -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck        # no -quit
 $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults <file>
