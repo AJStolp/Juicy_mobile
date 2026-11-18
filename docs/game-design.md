@@ -1,6 +1,6 @@
 # Heist game design
 
-Last updated 2026-11-12. How the heist fits together beyond the core sort. For what is built today, see `heist-alley-status.md`.
+Last updated 2026-11-18. How the heist fits together beyond the core sort. For what is built today, see `heist-alley-status.md`.
 
 ## The overall objective
 
@@ -24,7 +24,7 @@ The vault is a payoff, not a puzzle. Players never work out a code.
 
 ## The loop
 
-1. **Second to second, sorting.** Swipe items into chests, keep heat down. Unchanged from today.
+1. **Second to second, sorting.** Swipe items into the two chests and letters up into the raccoon's sack, keep heat down.
 2. **Each vat fill turns the current vault part a little.** Steady, earned progress the player always sees.
 3. **Each finished leg earns a Plinko round.** The streak during the leg sets how many coins the player drops. Plinko gives the big jumps.
 4. **A full stage pops or locks into place for good.**
@@ -53,7 +53,9 @@ The balance casinos strike: progress feels earned, losses feel real, but nobody 
 | Core | Gems by color | Sort to the matching chest |
 | Help | Gold bars, magnet, disguise | Bonus cash, pull matching gems, hide the next mistake |
 | Hurt | Dynamite, fake gems, dye packs, cop badge | Swipe up to pocket it as gear (sorting it into a chest raises heat), painted glass that reveals itself on landing, stains a chest, spikes heat |
-| Words | Letter tiles spelling HEIST, VAULT, ESCAPE | Bonus cash today; may become clues for the story |
+| Words | Letter tiles spelling HEIST, VAULT, ESCAPE | Swiped up into the raccoon's sack, never into a chest. Bonus cash today; may become clues for the story |
+
+**Two chests, and the raccoon's sack takes the letters.** Decided 2026-11-18: there is no third chest. The sort has two chests, and letters are swiped up into the raccoon's sack, which acts as the third box. A third chest for letters was considered and rejected. How the sack gesture works in detail, and what else goes into the sack, is still open under the difficulty proposal (gem color as the only real decision in the sort), which has not been approved.
 
 ## Gear
 
@@ -89,4 +91,4 @@ The 3D Plinko and the vault progress animations, together, since they are one fe
 
 ## TLDR
 
-Each heist is cracking one vault, and the door shows progress: four bolts pop, two rings turn, the wheel spins, the door opens. The first vault opens in one sitting, growing to 3 to 5 days by the third heist, with 3 to 5 minute stages and saved progress. Sorting turns parts steadily, Plinko (earned per leg, never bought) gives big jumps through a narrow vault slot, and busts grind the current part back while finished stages are kept. Money comes from gear and post bail, never from random rewards. Next: plan the 3D Plinko and vault animations.
+The sort has two chests, and letters go up into the raccoon's sack rather than a third chest. Each heist is cracking one vault, and the door shows progress: four bolts pop, two rings turn, the wheel spins, the door opens. The first vault opens in one sitting, growing to 3 to 5 days by the third heist, with 3 to 5 minute stages and saved progress. Sorting turns parts steadily, Plinko (earned per leg, never bought) gives big jumps through a narrow vault slot, and busts grind the current part back while finished stages are kept. Money comes from gear and post bail, never from random rewards. Next: plan the 3D Plinko and vault animations.
