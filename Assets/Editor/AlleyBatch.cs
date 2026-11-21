@@ -50,61 +50,60 @@ public static class AlleyBatch
         AlleySceneBuilder.WireGameplayInScene();
     }
 
-    // Wires the scene with each vault door size and renders the street, a
-    // close look at the door, and the Plinko board swung open. Leaves the
-    // scene on the doorway size.
+    // Wires the scene and renders the street with the vault door and a close
+    // look at the door.
     public static void Previews()
     {
         OpenAlley();
-        foreach (bool large in new[] { true, false })
-        {
-            string tag = large ? "large" : "doorway";
-            AlleySceneBuilder.SetVaultLarge(large);
-            AlleySceneBuilder.WireGameplayInScene();
-            System.IO.File.Copy("/tmp/juicy-alley-light.png", "/tmp/juicy-vault-" + tag + ".png", true);
-            var camera = UnityEngine.Camera.main;
-            var home = camera.transform.position;
-            var homeRotation = camera.transform.rotation;
-            var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
-            camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
-            camera.transform.LookAt(door.Focus);
-            AlleySceneBuilder.Capture("/tmp/juicy-vault-" + tag + "-close.png");
-            if (!large)
-            {
-                var hinge = UnityEngine.GameObject.Find("Plinko_Hinge").transform;
-                var closed = hinge.rotation;
-                hinge.rotation = UnityEngine.Quaternion.Euler(0f, 152f, 0f);
-                var view = UnityEngine.GameObject.Find("Plinko_View").transform;
-                var floor = UnityEngine.GameObject.Find("Plinko_Board").transform.Find("Floor");
-                camera.transform.position = view.position;
-                camera.transform.LookAt(floor.position + UnityEngine.Vector3.up * 0.715f);
-                float fov = camera.fieldOfView;
-                camera.fieldOfView = 58f;
-                UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 2.5f;
-                AlleySceneBuilder.Capture("/tmp/juicy-plinko-open.png");
-                camera.fieldOfView = fov;
-                UnityEngine.GameObject.Find("Plinko_Light").GetComponent<UnityEngine.Light>().intensity = 0f;
-                hinge.rotation = closed;
-            }
-            camera.transform.SetPositionAndRotation(home, homeRotation);
-        }
+        AlleySceneBuilder.WireGameplayInScene();
+        System.IO.File.Copy("/tmp/juicy-alley-light.png", "/tmp/juicy-vault-large.png", true);
+        var camera = UnityEngine.Camera.main;
+        var home = camera.transform.position;
+        var homeRotation = camera.transform.rotation;
+        var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
+        camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
+        camera.transform.LookAt(door.Focus);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-large-close.png");
+        camera.transform.SetPositionAndRotation(home, homeRotation);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 
-    // Renders the word sign in both places with HEIST part spelled, then
-    // leaves the scene on the vault placement.
+    // Renders the vault: the street and a close look at rest, the close look
+    // with the planted save's progress (stage 5, 4 of 16 turns), and the door
+    // swung open. Files are /tmp/juicy-vault-<street|close|stage5|open>.png.
+    public static void VaultPreviews()
+    {
+        OpenAlley();
+        AlleySceneBuilder.WireGameplayInScene();
+        var camera = UnityEngine.Camera.main;
+        var home = camera.transform.position;
+        var homeRotation = camera.transform.rotation;
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-street.png");
+        var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
+        camera.transform.position = door.Focus + new UnityEngine.Vector3(0.6f, 0.2f, -3.2f);
+        camera.transform.LookAt(door.Focus);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-close.png");
+        var progress = new VaultProgress();
+        progress.Restore(1, 5, 4);
+        door.Preview(progress, 0f);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-stage5.png");
+        string report = "stage 5 preview shows " + door.LockedShown() + " stages locked\n";
+        door.Preview(progress, 105f);
+        AlleySceneBuilder.Capture("/tmp/juicy-vault-open.png");
+        door.EndPreview();
+        camera.transform.SetPositionAndRotation(home, homeRotation);
+        System.IO.File.WriteAllText("/tmp/juicy-vault-previews.txt", report);
+    }
+
+    // Renders the word sign over the vault with HEIST part spelled.
     public static void WordSignPreviews()
     {
         OpenAlley();
-        foreach (bool street in new[] { true, false })
-        {
-            AlleySceneBuilder.SetWordSignStreet(street);
-            AlleySceneBuilder.WireGameplayInScene();
-            var sign = UnityEngine.Object.FindAnyObjectByType<AlleyWordSign>();
-            sign.Show("HEIST", i => i == 0 || i == 2);
-            AlleySceneBuilder.Capture("/tmp/juicy-word-" + (street ? "street" : "vault") + ".png");
-            sign.Show("HEIST", _ => false);
-        }
+        AlleySceneBuilder.WireGameplayInScene();
+        var sign = UnityEngine.Object.FindAnyObjectByType<AlleyWordSign>();
+        sign.Show("HEIST", i => i == 0 || i == 2);
+        AlleySceneBuilder.Capture("/tmp/juicy-word-vault.png");
+        sign.Show("HEIST", _ => false);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 
@@ -120,13 +119,14 @@ public static class AlleyBatch
     }
 
     // Checks that a save carries over: writes a known save, enters Play as a
-    // normal player, reads back the vault, cash, gear and door, then puts the
+    // normal player, reads back the vault, cash, gear, clues and door, then puts the
     // real save back. Result in /tmp/juicy-save-check.txt. Works in batch mode
     // or, through the flag below, in the open editor.
     //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck
     const string SaveKey = "Juicy.HeistSave";
     const string SaveCheckReport = "/tmp/juicy-save-check.txt";
-    const string Planted = "{\"heist\":1,\"stage\":5,\"turns\":4,\"balance\":54321.0,\"gear\":[2,0,1,1]}";
+    const string Planted = "{\"heist\":1,\"stage\":5,\"turns\":4,\"balance\":54321.0,\"gear\":[2,0,1,1]," +
+        "\"clueSeed\":77,\"clueCycle\":3,\"clueSymbols\":[6,2],\"clueTiers\":[3,0]}";
 
     public static void SaveCheck()
     {
@@ -167,16 +167,20 @@ public static class AlleyBatch
             var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
             var vault = director.Vault;
             var rules = director.Rules;
-            int hiddenBolts = 0;
-            foreach (var t in door.GetComponentsInChildren<UnityEngine.Transform>(true))
-                if (t.name.StartsWith("Bolt_") && !t.gameObject.activeSelf) hiddenBolts++;
-            var ring = door.transform.Find("Door/Ring_Outer").localEulerAngles;
+            var clues = director.Clues;
+            // Stages 0 to 4 are locked in the planted save, so the door must
+            // show five locked: four slid bolts and the gear turned.
+            int locked = door.LockedShown();
             bool ok = vault.Heist == 1 && vault.Stage == 5 && vault.Turns == 4 && rules.Balance == 54321d &&
-                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && hiddenBolts == 4;
+                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5 &&
+                clues.Count == 2 && clues.Clues[0].Symbol == 6 && clues.Clues[0].Tier == 3 &&
+                clues.Clues[1].Symbol == 2 && clues.Clues[1].Tier == 0 && clues.Seed == 77 && clues.Cycle == 3 && !clues.HackDue;
             System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") +
                 " heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage +
                 " balance " + rules.Balance + " dynamite " + rules.GearCount(GearKind.Dynamite) + " drill " + rules.GearCount(GearKind.Drill) +
-                " bribe " + rules.GearCount(GearKind.Bribe) + " bolts popped " + hiddenBolts + " outer ring " + ring.ToString("F0") + "\n");
+                " bribe " + rules.GearCount(GearKind.Bribe) + " stages shown locked " + locked +
+                " clues restored " + clues.Count + "/" + clues.CluesNeeded + " symbols " + string.Join(",", clues.SymbolsSnapshot()) +
+                " tiers " + string.Join(",", clues.TiersSnapshot()) + " cycle " + clues.Cycle + " seed " + clues.Seed + "\n");
             SessionState.SetInt("JuicySaveCheck", 2);
             EditorApplication.isPlaying = false;
             return;
@@ -193,59 +197,105 @@ public static class AlleyBatch
         }
     }
 
-    // Drops 200 coins on the Plinko board at 8x with the bot's aim and counts
-    // the slots they land in. Result in /tmp/juicy-plinko-sim.txt.
-    const string SimReport = "/tmp/juicy-plinko-sim.txt";
-    const int SimCoins = 200;
+    // Plants a full clue cycle, plays one hack with scripted taps, and saves
+    // every frame at 30 fps to /tmp/juicy-hack-<name>/frame_000.png on, with
+    // the result in /tmp/juicy-hack-<name>.txt (PASS or FAIL first). Runs on
+    // the bot's save, so the real save is untouched. Turn the frames into a
+    // video with: ffmpeg -framerate 30 -i frame_%03d.png -pix_fmt yuv420p out.mp4
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.HackPerfect      (no -quit)
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.HackFailSecond   (no -quit)
+    public static void HackPerfect() => HackCapture("perfect", -1);
+    public static void HackFailSecond() => HackCapture("fail-second", 1);
 
-    public static void PlinkoSim()
+    const string HackStepKey = "JuicyHackCapture";
+    const int HackTailFrames = 60;
+    static int hackLastFrame = -1;
+    static int hackFrames;
+    static int hackTail;
+    static string hackBefore = "";
+
+    static void HackCapture(string name, int wrongAt)
     {
         OpenAlley();
-        System.IO.File.WriteAllText("/tmp/juicy-alley-bot", "sim");
-        SessionState.SetInt("JuicyPlinkoSim", 1);
-        EditorApplication.update += PlinkoSimTick;
+        string folder = "/tmp/juicy-hack-" + name;
+        if (System.IO.Directory.Exists(folder)) System.IO.Directory.Delete(folder, true);
+        System.IO.Directory.CreateDirectory(folder);
+        System.IO.File.Delete(folder + ".txt");
+        System.IO.File.WriteAllText("/tmp/juicy-alley-bot", "hack");
+        SessionState.SetString("JuicyHackName", name);
+        SessionState.SetInt("JuicyHackWrongAt", wrongAt);
+        SessionState.SetInt(HackStepKey, 1);
+        EditorApplication.update += HackCaptureTick;
         EditorApplication.isPlaying = true;
     }
 
     [InitializeOnLoadMethod]
-    static void ResumePlinkoSim()
+    static void ResumeHackCapture()
     {
-        if (SessionState.GetInt("JuicyPlinkoSim", 0) != 0) EditorApplication.update += PlinkoSimTick;
+        if (SessionState.GetInt(HackStepKey, 0) != 0) EditorApplication.update += HackCaptureTick;
     }
 
-    static void PlinkoSimTick()
+    static void HackCaptureTick()
     {
-        int step = SessionState.GetInt("JuicyPlinkoSim", 0);
-        var plinko = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyPlinko>() : null;
-        if (step == 1 && plinko != null && UnityEngine.Time.frameCount > 5)
+        int step = SessionState.GetInt(HackStepKey, 0);
+        string name = SessionState.GetString("JuicyHackName", "hack");
+        string folder = "/tmp/juicy-hack-" + name;
+        var hack = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyHack>() : null;
+        var director = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>() : null;
+        if (step == 1 && hack != null && director != null && director.Clues != null && UnityEngine.Time.frameCount > 5)
         {
-            UnityEngine.Time.timeScale = 8f;
-            plinko.Simulate(SimCoins);
-            SessionState.SetInt("JuicyPlinkoSim", 2);
+            UnityEngine.Time.captureFramerate = 30;
+            UnityEngine.Time.timeScale = 1f;
+            var clues = director.Clues;
+            while (!clues.HackDue) clues.ClueFound(ClueRules.MaxTier);
+            hack.ScriptNext(SessionState.GetInt("JuicyHackWrongAt", -1));
+            hackBefore = "before stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " balance " + director.Rules.Balance.ToString("0") +
+                " bribes " + director.Rules.GearCount(GearKind.Bribe) + " drills " + director.Rules.GearCount(GearKind.Drill) +
+                " clues " + string.Join(",", clues.SymbolsSnapshot());
+            hackFrames = 0;
+            hackTail = 0;
+            hackLastFrame = -1;
+            SessionState.SetInt(HackStepKey, 2);
             return;
         }
-        if (step == 2 && plinko != null && !plinko.Running && plinko.Rounds > 0)
+        if (step == 2 && hack != null)
         {
-            var log = new System.Text.StringBuilder("coins " + plinko.CoinsDropped + " jostles " + plinko.Jostles + " pin hits " + plinko.PinHits + "\n" + plinko.Settings + "\n");
-            for (int slot = 0; slot < PlinkoPayout.SlotCount; slot++)
-            {
-                PlinkoReward reward = PlinkoPayout.For(slot);
-                string prize = reward.Prize == PlinkoPrize.Cash ? "$" + reward.Cash : reward.Prize == PlinkoPrize.Gear ? reward.Gear.ToString() : "VAULT";
-                log.AppendLine("slot " + slot + " " + prize + " " + plinko.SlotHits[slot] + " (" + (100f * plinko.SlotHits[slot] / UnityEngine.Mathf.Max(1, plinko.CoinsDropped)).ToString("0") + "%)");
-            }
-            foreach (string line in plinko.Trace) log.AppendLine(line);
-            System.IO.File.WriteAllText(SimReport, log.ToString());
-            UnityEngine.Time.timeScale = 1f;
-            SessionState.SetInt("JuicyPlinkoSim", 3);
+            if (UnityEngine.Time.frameCount == hackLastFrame) return;
+            hackLastFrame = UnityEngine.Time.frameCount;
+            AlleySceneBuilder.Capture(folder + "/frame_" + hackFrames.ToString("000") + ".png");
+            hackFrames++;
+            if (hack.Hacks == 0 || hack.Running || ++hackTail < HackTailFrames) return;
+            HackReward reward = hack.LastReward;
+            int count = hack.LastClueCount;
+            int wrongAt = SessionState.GetInt("JuicyHackWrongAt", -1);
+            int expectedSteps = wrongAt < 0 ? count : wrongAt;
+            HackReward expected = ClueRules.RewardFor(count, expectedSteps);
+            var saved = HeistSave.FromJson(UnityEngine.PlayerPrefs.GetString("Juicy.HeistSave.Bot", ""));
+            bool ok = reward.Steps == expectedSteps && reward.Perfect == (wrongAt < 0) && reward.Cash == expected.Cash &&
+                reward.Bribes == expected.Bribes && reward.Drills == expected.Drills && reward.Turns == expected.Turns &&
+                director.Clues.Count == 0 && saved != null && saved.clueSymbols.Length == 0 && !director.Paused;
+            System.IO.File.WriteAllText(folder + ".txt", (ok ? "PASS" : "FAIL") + " " + name + "\n" +
+                "steps " + reward.Steps + "/" + count + (reward.Perfect ? " perfect" : " failed") + " (expected " + expectedSteps + ")\n" +
+                "paid cash " + reward.Cash.ToString("0") + " bribes " + reward.Bribes + " drills " + reward.Drills + " vault turns " + reward.Turns + "\n" +
+                hackBefore + "\n" +
+                "after stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " balance " + director.Rules.Balance.ToString("0") +
+                " bribes " + director.Rules.GearCount(GearKind.Bribe) + " drills " + director.Rules.GearCount(GearKind.Drill) +
+                " clues left " + director.Clues.Count + " saved clues " + (saved != null ? saved.clueSymbols.Length.ToString() : "none") +
+                " sort resumed " + !director.Paused + "\n" +
+                "keys " + string.Join(",", hack.KeySymbols) + "\n" +
+                "frames " + hackFrames + " in " + folder + "\n");
+            UnityEngine.Time.captureFramerate = 0;
+            SessionState.SetInt(HackStepKey, 3);
             EditorApplication.isPlaying = false;
             return;
         }
         if (step == 3 && !EditorApplication.isPlaying)
         {
-            SessionState.SetInt("JuicyPlinkoSim", 0);
-            EditorApplication.update -= PlinkoSimTick;
+            SessionState.SetInt(HackStepKey, 0);
+            EditorApplication.update -= HackCaptureTick;
             System.IO.File.Delete("/tmp/juicy-alley-bot");
-            if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(0);
+            bool passed = System.IO.File.Exists(folder + ".txt") && System.IO.File.ReadAllText(folder + ".txt").StartsWith("PASS");
+            if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(passed ? 0 : 1);
         }
     }
 
@@ -335,7 +385,7 @@ public static class AlleyBatch
     // be checked against how Blender axes arrive in Unity.
     public static void Inspect()
     {
-        string[] models = { "Assets/Art/Alley/SM_VaultDoor.fbx", "Assets/Art/Alley/SM_PlinkoBoard.fbx" };
+        string[] models = { "Assets/Art/Alley/SM_GraffitiVaultDoor.fbx" };
         var log = new System.Text.StringBuilder();
         foreach (string path in models)
         {
@@ -344,7 +394,6 @@ public static class AlleyBatch
             if (prefab == null) continue;
             foreach (UnityEngine.Transform t in prefab.GetComponentsInChildren<UnityEngine.Transform>())
             {
-                if (t.name.StartsWith("Pin_") && t.name != "Pin_0_1") continue;
                 log.AppendLine("  " + t.name + " parent " + (t.parent ? t.parent.name : "-") + " local " + t.localPosition.ToString("F3") +
                     " rot " + t.localEulerAngles.ToString("F0") + " scale " + t.localScale.ToString("F2"));
             }

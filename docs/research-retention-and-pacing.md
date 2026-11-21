@@ -111,6 +111,8 @@ The European Commission proposed the **Digital Fairness Act** on November 11, 20
 
 ### Does a free, earned Plinko round fall under these rules?
 
+**Note, 2026-11-18:** Plinko was replaced by the clue hack, a bonus round won by remembering clues rather than by a random drop (see `game-design.md`). This analysis is kept as history.
+
 As the design stands (earned only by finishing a leg, never bought, no real money stake, prizes usable only in game and not tradeable):
 
 - **Apple 3.1.1 and Google Play odds disclosure:** no. Both apply only to random items "for purchase" or "from a purchase."

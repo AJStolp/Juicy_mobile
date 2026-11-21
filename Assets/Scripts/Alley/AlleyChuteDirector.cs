@@ -47,6 +47,7 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public HeistSortRules Rules { get; private set; }
     public VaultProgress Vault { get; private set; }
+    public ClueRules Clues { get; private set; }
     public bool AutoPlay => autoPlay;
     public float AutoMistakes { get => autoMistakes; set => autoMistakes = Mathf.Clamp01(value); }
 
@@ -77,6 +78,7 @@ public class AlleyChuteDirector : MonoBehaviour
     {
         Rules = new HeistSortRules();
         Vault = new VaultProgress();
+        Clues = new ClueRules(Vault, System.Environment.TickCount);
         Rules.Busted += ClearLive;
         Rules.Busted += Vault.Bust;
         Rules.VatFilled += _ => Vault.Turn(TurnsPerVatFill);
@@ -96,7 +98,7 @@ public class AlleyChuteDirector : MonoBehaviour
         // Bot runs keep their own save and start each run fresh.
         if (autoPlay) PlayerPrefs.DeleteKey(BotSaveKey);
         HeistSave saved = HeistSave.FromJson(PlayerPrefs.GetString(CurrentSaveKey, ""));
-        if (saved != null) saved.Apply(Vault, Rules);
+        if (saved != null) saved.Apply(Vault, Rules, Clues);
         Vault.Turned += (_, __) => SaveNow();
         Vault.StageLocked += _ => SaveNow();
         Vault.RolledBack += (_, __) => SaveNow();
@@ -108,7 +110,7 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public void SaveNow()
     {
-        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules).ToJson());
+        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules, Clues).ToJson());
         PlayerPrefs.Save();
     }
 
