@@ -7,7 +7,7 @@ export const meta = {
     { title: 'Build', detail: 'implementer per ticket: branch off dev, change, gate, push' },
     { title: 'QA', detail: 'a separate agent proves it against the ticket and uploads evidence' },
     { title: 'Deliver', detail: 'PR into dev, squash merge with a Refs trailer, ticket to done' },
-    { title: 'Promote', detail: 'open the dev to main PR and stop for Anthony' },
+    { title: 'Promote', detail: 'open the dev to main PR and its release ticket, then stop for Anthony' },
   ],
 }
 
@@ -222,7 +222,16 @@ Acceptance:
   not on main, each with its title, and ends with one "Closes T-xxx" line per ticket, then the
   attribution lines from the session.
 - It is NOT merged. Anthony merges it after seeing the evidence. Nothing moves to closed.
-Return the PR URL only.`, { label: 'promotion PR', phase: 'Promote' })
+- Once its body is final, the board has exactly one live release ticket (type release, state draft,
+  approved or deploying) and its range names the PR's head sha. Build it from the headspace checkout,
+  /Users/astolp/Desktop/Dev/headspace, after git -C /Users/astolp/Desktop/Dev/JuicySortGame fetch origin:
+    ./.venv/bin/python -m boardlib.release --project juicysortgame new --version vX.Y.Z --owner AJStolp
+  The version is the last release ticket's with the patch number one higher, v0.1.0 if there is none.
+  If a live one already names this head, keep it. If one names an older head, mark it
+    ./.venv/bin/python -m boardlib.release --project juicysortgame state <id> superseded --by lead --why "dev moved to <sha>"
+  and build a new one. Never set a release to approved or success: success comes after Anthony merges
+  (AGENTS.md, Release).
+Return the PR URL and the release ticket id.`, { label: 'promotion PR', phase: 'Promote' })
 }
 
 return { order: plan.order.map(t => t.id), skipped: plan.skipped, results, promotion }
