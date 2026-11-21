@@ -14,9 +14,12 @@ the release path, and the tools.
   machine on the tailnet, no login). API description at `/openapi.json`.
 - **No factory.** Anthony queues a batch of tickets and a lead agent works it in a session with
   a workflow, release included (headspace `projects.yml`, T-418). That workflow is
-  `.claude/workflows/work-board-batch.js`: run it by name with `{tickets: ["T-005", ...]}`, or
-  with nothing to take the frontier. It works one ticket at a time, with separate agents to
-  build, QA and merge, and stops at the promotion PR.
+  `.claude/workflows/work-board-batch.js`. Sessions run in the headspace checkout, where its
+  name does not resolve, so run it by path: `scriptPath`
+  `/Users/astolp/Desktop/Dev/JuicySortGame/.claude/workflows/work-board-batch.js`, with
+  `{tickets: ["T-005", ...]}` as its args, or none to take the frontier. It works one ticket
+  at a time, with separate agents to build, QA and merge, and stops at the promotion PR and its
+  release ticket.
 - **Branches:** a ticket branch comes off `dev` and carries the ticket id in its name
   (`T-003-missed-gems`). Its PR squash merges into `dev` with a `Refs T-003` trailer, and the
   ticket moves to `done`. The promotion PR from `dev` into `main` merges with a merge commit and
@@ -24,6 +27,19 @@ the release path, and the tools.
 - **Release:** there is no production build yet, so `main` is the end of the line. The lead
   opens the promotion PR and **does not merge it until Anthony has seen the evidence and said
   go**, because this is design work.
+  - The deploy is `confirm: manual` in headspace `projects.yml`, so the board closes nothing
+    when the promotion merges. It closes the tickets once a release ticket naming the
+    promotion's head is set to `success`. Without one they stay in `done` for ever.
+  - Once the promotion PR's body is final, the lead builds that release ticket, from the
+    headspace checkout:
+    `./.venv/bin/python -m boardlib.release --project juicysortgame new --version vX.Y.Z --owner AJStolp`.
+    The version is the last release's with the patch number one higher. Any merge into `dev`
+    after that moves the head, and the ticket no longer names it: mark it
+    `state <id> superseded --by lead` and build it again.
+  - After Anthony merges the promotion, the lead records that it is out:
+    `./.venv/bin/python -m boardlib.release --project juicysortgame state <id> success --by lead --why "Anthony merged promotion #N"`.
+    The poller then closes the release ticket and every ticket it carries. Never set
+    `approved`: nothing here reads it, and an approval a session writes is not Anthony's.
 - **Design work goes through prototypes.** When a ticket asks how something should look or
   feel, build switchable options in the running game, capture each, recommend one, and wait for
   Anthony's pick at `ready: human`. After the pick, keep the chosen option and remove the rest.
@@ -92,6 +108,7 @@ them.
 Tickets live on the board (`juicysortgame`) and follow headspace `WORKFLOW.md`. Branch off
 `dev` with the ticket id in the name, pass the gate (batch Unity compiles and every EditMode test
 passes), and upload real photo, video or number proof to the ticket. Squash merge into `dev`
-for done. The promotion into `main` (closed) waits for Anthony to see the work. Design
+for done. The promotion into `main` waits for Anthony to see the work, and its tickets close
+when the lead sets its release ticket to `success` after he merges. Design
 questions get switchable prototypes and wait for his pick. Only one Unity runs at a time, with
 the editor closed.
