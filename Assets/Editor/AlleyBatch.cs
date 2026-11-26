@@ -84,7 +84,8 @@ public static class AlleyBatch
         camera.transform.LookAt(door.Focus);
         AlleySceneBuilder.Capture("/tmp/juicy-vault-close.png");
         var progress = new VaultProgress();
-        progress.Restore(1, 5, 4);
+        progress.Reset(16);
+        progress.Restore(5, 4);
         door.Preview(progress, 0f);
         AlleySceneBuilder.Capture("/tmp/juicy-vault-stage5.png");
         string report = "stage 5 preview shows " + door.LockedShown() + " stages locked\n";
@@ -129,14 +130,14 @@ public static class AlleyBatch
     }
 
     // Checks that a save carries over: writes a known save, enters Play as a
-    // normal player, reads back the vault, cash, gear, clues and door, then puts the
-    // real save back. Result in /tmp/juicy-save-check.txt. Works in batch mode
+    // normal player, reads back the cash, gear, city progress and clues, then
+    // puts the real save back. Result in /tmp/juicy-save-check.txt. Works in batch mode
     // or, through the flag below, in the open editor.
     //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck
     const string SaveKey = "Juicy.HeistSave";
     const string SaveCheckReport = "/tmp/juicy-save-check.txt";
-    const string Planted = "{\"heist\":1,\"stage\":5,\"turns\":4,\"balance\":54321.0,\"gear\":[2,0,1,1]," +
-        "\"clueSeed\":77,\"clueCycle\":3,\"clueSymbols\":[6,2],\"clueTiers\":[3,0],\"placeBeaten\":2}";
+    const string Planted = "{\"balance\":54321.0,\"gear\":[2,0,1,1],\"placeBeaten\":6,\"vaultCracked\":true," +
+        "\"placeClueTiers\":[3,0,2,1,3,2]}";
 
     public static void SaveCheck()
     {
@@ -174,25 +175,16 @@ public static class AlleyBatch
         if (step == 1 && EditorApplication.isPlaying && UnityEngine.Time.frameCount > 5)
         {
             var director = UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>();
-            var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
-            var vault = director.Vault;
             var rules = director.Rules;
-            var clues = director.Clues;
-            // Stages 0 to 4 are locked in the planted save, so the door must
-            // show five locked: four slid bolts and the gear turned.
-            int locked = door.LockedShown();
-            bool ok = vault.Heist == 1 && vault.Stage == 5 && vault.Turns == 4 && rules.Balance == 54321d &&
-                rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5 &&
-                clues.Count == 2 && clues.Clues[0].Symbol == 6 && clues.Clues[0].Tier == 3 &&
-                clues.Clues[1].Symbol == 2 && clues.Clues[1].Tier == 0 && clues.Seed == 77 && clues.Cycle == 3 && !clues.HackDue &&
-                director.Progress.Beaten == 2;
+            var file = director.CaseFile;
+            var tiers = file.TiersSnapshot();
+            bool ok = rules.Balance == 54321d && rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 &&
+                director.Progress.Beaten == 6 && director.Progress.VaultCracked &&
+                string.Join(",", tiers) == "3,0,2,1,3,2";
             System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") +
-                " heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage +
                 " balance " + rules.Balance + " dynamite " + rules.GearCount(GearKind.Dynamite) + " drill " + rules.GearCount(GearKind.Drill) +
-                " bribe " + rules.GearCount(GearKind.Bribe) + " stages shown locked " + locked +
-                " clues restored " + clues.Count + "/" + clues.CluesNeeded + " symbols " + string.Join(",", clues.SymbolsSnapshot()) +
-                " tiers " + string.Join(",", clues.TiersSnapshot()) + " cycle " + clues.Cycle + " seed " + clues.Seed +
-                " city levels beaten " + director.Progress.Beaten + "\n");
+                " bribe " + rules.GearCount(GearKind.Bribe) + " city levels beaten " + director.Progress.Beaten +
+                " vault cracked " + director.Progress.VaultCracked + " clue tiers " + string.Join(",", tiers) + "\n");
             SessionState.SetInt("JuicySaveCheck", 2);
             EditorApplication.isPlaying = false;
             return;
@@ -209,121 +201,32 @@ public static class AlleyBatch
         }
     }
 
-    // Plants a full clue cycle, plays one hack with scripted taps, and saves
-    // every frame at 30 fps to /tmp/juicy-hack-<name>/frame_000.png on, with
-    // the result in /tmp/juicy-hack-<name>.txt (PASS or FAIL first). Runs on
-    // the bot's save, so the real save is untouched. Turn the frames into a
-    // video with: ffmpeg -framerate 30 -i frame_%03d.png -pix_fmt yuv420p out.mp4
-    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.HackPerfect      (no -quit)
-    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.HackFailSecond   (no -quit)
-    public static void HackPerfect() => HackCapture("perfect", -1);
-    public static void HackFailSecond() => HackCapture("fail-second", 1);
-
-    const string HackStepKey = "JuicyHackCapture";
-    const int HackTailFrames = 60;
-    static int hackLastFrame = -1;
-    static int hackFrames;
-    static int hackTail;
-    static string hackBefore = "";
-
-    static void HackCapture(string name, int wrongAt)
-    {
-        OpenAlley();
-        string folder = "/tmp/juicy-hack-" + name;
-        if (System.IO.Directory.Exists(folder)) System.IO.Directory.Delete(folder, true);
-        System.IO.Directory.CreateDirectory(folder);
-        System.IO.File.Delete(folder + ".txt");
-        System.IO.File.WriteAllText("/tmp/juicy-alley-bot", "hack");
-        SessionState.SetString("JuicyHackName", name);
-        SessionState.SetInt("JuicyHackWrongAt", wrongAt);
-        SessionState.SetInt(HackStepKey, 1);
-        EditorApplication.update += HackCaptureTick;
-        EditorApplication.isPlaying = true;
-    }
-
-    [InitializeOnLoadMethod]
-    static void ResumeHackCapture()
-    {
-        if (SessionState.GetInt(HackStepKey, 0) != 0) EditorApplication.update += HackCaptureTick;
-    }
-
-    static void HackCaptureTick()
-    {
-        int step = SessionState.GetInt(HackStepKey, 0);
-        string name = SessionState.GetString("JuicyHackName", "hack");
-        string folder = "/tmp/juicy-hack-" + name;
-        var hack = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyHack>() : null;
-        var director = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>() : null;
-        if (step == 1 && hack != null && director != null && director.Clues != null && UnityEngine.Time.frameCount > 5)
-        {
-            UnityEngine.Time.captureFramerate = 30;
-            UnityEngine.Time.timeScale = 1f;
-            var clues = director.Clues;
-            while (!clues.HackDue) clues.ClueFound(ClueRules.MaxTier);
-            hack.ScriptNext(SessionState.GetInt("JuicyHackWrongAt", -1));
-            hackBefore = "before stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " balance " + director.Rules.Balance.ToString("0") +
-                " bribes " + director.Rules.GearCount(GearKind.Bribe) + " drills " + director.Rules.GearCount(GearKind.Drill) +
-                " clues " + string.Join(",", clues.SymbolsSnapshot());
-            hackFrames = 0;
-            hackTail = 0;
-            hackLastFrame = -1;
-            SessionState.SetInt(HackStepKey, 2);
-            return;
-        }
-        if (step == 2 && hack != null)
-        {
-            if (UnityEngine.Time.frameCount == hackLastFrame) return;
-            hackLastFrame = UnityEngine.Time.frameCount;
-            AlleySceneBuilder.Capture(folder + "/frame_" + hackFrames.ToString("000") + ".png");
-            hackFrames++;
-            if (hack.Hacks == 0 || hack.Running || ++hackTail < HackTailFrames) return;
-            HackReward reward = hack.LastReward;
-            int count = hack.LastClueCount;
-            int wrongAt = SessionState.GetInt("JuicyHackWrongAt", -1);
-            int expectedSteps = wrongAt < 0 ? count : wrongAt;
-            HackReward expected = ClueRules.RewardFor(count, expectedSteps);
-            var saved = HeistSave.FromJson(UnityEngine.PlayerPrefs.GetString("Juicy.HeistSave.Bot", ""));
-            bool ok = reward.Steps == expectedSteps && reward.Perfect == (wrongAt < 0) && reward.Cash == expected.Cash &&
-                reward.Bribes == expected.Bribes && reward.Drills == expected.Drills && reward.Turns == expected.Turns &&
-                director.Clues.Count == 0 && saved != null && saved.clueSymbols.Length == 0 && !director.Paused;
-            System.IO.File.WriteAllText(folder + ".txt", (ok ? "PASS" : "FAIL") + " " + name + "\n" +
-                "steps " + reward.Steps + "/" + count + (reward.Perfect ? " perfect" : " failed") + " (expected " + expectedSteps + ")\n" +
-                "paid cash " + reward.Cash.ToString("0") + " bribes " + reward.Bribes + " drills " + reward.Drills + " vault turns " + reward.Turns + "\n" +
-                hackBefore + "\n" +
-                "after stage " + director.Vault.Stage + " turns " + director.Vault.Turns + " balance " + director.Rules.Balance.ToString("0") +
-                " bribes " + director.Rules.GearCount(GearKind.Bribe) + " drills " + director.Rules.GearCount(GearKind.Drill) +
-                " clues left " + director.Clues.Count + " saved clues " + (saved != null ? saved.clueSymbols.Length.ToString() : "none") +
-                " sort resumed " + !director.Paused + "\n" +
-                "keys " + string.Join(",", hack.KeySymbols) + "\n" +
-                "frames " + hackFrames + " in " + folder + "\n");
-            UnityEngine.Time.captureFramerate = 0;
-            SessionState.SetInt(HackStepKey, 3);
-            EditorApplication.isPlaying = false;
-            return;
-        }
-        if (step == 3 && !EditorApplication.isPlaying)
-        {
-            SessionState.SetInt(HackStepKey, 0);
-            EditorApplication.update -= HackCaptureTick;
-            System.IO.File.Delete("/tmp/juicy-alley-bot");
-            bool passed = System.IO.File.Exists(folder + ".txt") && System.IO.File.ReadAllText(folder + ".txt").StartsWith("PASS");
-            if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(passed ? 0 : 1);
-        }
-    }
-
     // Plays the map through on the real save (backed up and put back):
     // stills of both looks with nothing and three levels beaten, a locked stop
     // refusing a tap, an open stop starting its level, a forced win, the clue
-    // scratched off (half, then all), and the map coming back with the next
-    // stop open, the clue on the board and the save holding both.
+    // scratched off (half, then all), the map coming back with the next stop
+    // open, the clue on the board and the save holding both; then the vault:
+    // every level beaten opens it, its sort locks six stages, the keypad
+    // finale enters all six clues (one wrong tap on the way), the vault
+    // cracks, the save holds it and a tap goes back to the map.
     // Stills in /tmp/juicy-map-*.png, result in /tmp/juicy-map.txt (PASS or
     // FAIL first).
     //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.MapCheck   (no -quit)
     const string MapStepKey = "JuicyMapCheck";
     const string MapReport = "/tmp/juicy-map.txt";
     static int mapWait;
+    static float mapWaitTime;
+    static float mapGiveUpAt;
     static readonly System.Text.StringBuilder mapLog = new System.Text.StringBuilder();
     static bool mapOk;
+    static int mapErrors;
+    static string mapFirstError = "";
+
+    static void CountMapError(string message, string stack, UnityEngine.LogType type)
+    {
+        if (type != UnityEngine.LogType.Error && type != UnityEngine.LogType.Exception && type != UnityEngine.LogType.Assert) return;
+        if (mapErrors++ == 0) mapFirstError = message;
+    }
 
     public static void MapCheck()
     {
@@ -344,10 +247,11 @@ public static class AlleyBatch
         if (SessionState.GetInt(MapStepKey, 0) != 0) EditorApplication.update += MapCheckTick;
     }
 
-    static void MapStep(int next, int waitFrames = 3)
+    static void MapStep(int next, int waitFrames = 3, float waitSeconds = 0f)
     {
         SessionState.SetInt(MapStepKey, next);
         mapWait = UnityEngine.Time.frameCount + waitFrames;
+        mapWaitTime = UnityEngine.Time.time + waitSeconds;
     }
 
     static void MapExpect(bool condition, string what)
@@ -360,7 +264,7 @@ public static class AlleyBatch
     {
         int step = SessionState.GetInt(MapStepKey, 0);
         if (step == 0) return;
-        if (step < 90 && (!EditorApplication.isPlaying || UnityEngine.Time.frameCount < mapWait)) return;
+        if (step < 90 && (!EditorApplication.isPlaying || UnityEngine.Time.frameCount < mapWait || UnityEngine.Time.time < mapWaitTime)) return;
         var director = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>() : null;
         var map = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyMap>() : null;
         var hud = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyLevelHud>() : null;
@@ -397,6 +301,8 @@ public static class AlleyBatch
                 if (UnityEngine.Time.frameCount < 10) return;
                 mapOk = true;
                 mapLog.Clear();
+                mapErrors = 0;
+                UnityEngine.Application.logMessageReceived += CountMapError;
                 MapExpect(director.UsesMap && map != null && map.Showing, "the game opens on the map");
                 MapExpect(director.Paused, "nothing falls while the map is up");
                 director.Progress.Restore(0);
@@ -499,9 +405,70 @@ public static class AlleyBatch
                 return;
             }
             case 12:
+            {
                 AlleySceneBuilder.Capture("/tmp/juicy-reveal-smudged.png");
+                var reveal = UnityEngine.Object.FindAnyObjectByType<AlleyClueReveal>();
+                reveal.Continue();
+                // Every level beaten, with clues of every clarity, opens the vault.
+                director.Progress.Restore(6);
+                director.CaseFile.Restore(new[] { ClueRules.MaxTier, ClueRules.MaxTier, 2, 1, 0, 2 });
+                map.Show();
+                MapStep(13);
+                return;
+            }
+            case 13:
+            {
+                AlleySceneBuilder.Capture("/tmp/juicy-map-vault-open.png");
+                MapExpect(director.Progress.VaultOpen && !director.Progress.VaultCracked, "every level beaten opens the vault");
+                var hack = UnityEngine.Object.FindAnyObjectByType<AlleyHack>();
+                hack.ScriptNext(1);
+                MapExpect(map.ChooseVault() && director.IsBoss && !director.Paused && !map.Showing, "tapping the vault starts the boss");
+                MapStep(14, 30);
+                return;
+            }
+            case 14:
+            {
+                int vaultTarget = director.Level.Target;
+                for (int i = 0; i < vaultTarget && !director.Level.TargetReached; i++) director.Rules.Catch(ItemKind.Gem, i % 2, i % 2);
+                MapExpect(director.Level.TargetReached && director.Level.Playing && director.Paused, "the vault's sort holds its win for the finale");
+                MapExpect(director.Vault.Stage == VaultProgress.Stages - 1, "the sort locks the door's first six stages");
+                MapExpect(director.Finale != null && director.Finale.Count == 6, "the finale asks for all six clues");
+                MapStep(15, 3, 1.6f);
+                return;
+            }
+            case 15:
+                AlleySceneBuilder.Capture("/tmp/juicy-finale.png");
+                mapGiveUpAt = UnityEngine.Time.time + 30f;
+                MapStep(16);
+                return;
+            case 16:
+                if (!hud.ShowingResult)
+                {
+                    if (UnityEngine.Time.time > mapGiveUpAt) MapAbort("the finale never finished");
+                    return;
+                }
+                MapExpect(director.Level.State == LevelState.Won && director.Finale.Cracked && director.Finale.AlarmsLeft == VaultFinale.Alarms - 1,
+                    "one wrong tap sounds an alarm and the right ones still crack it");
+                MapExpect(director.Progress.VaultCracked && director.Vault.IsCracked, "the vault is cracked and the door turns its last stage");
+                {
+                    var saved = HeistSave.FromJson(UnityEngine.PlayerPrefs.GetString(SaveKey, ""));
+                    MapExpect(saved != null && saved.vaultCracked, "the save holds the cracked vault");
+                }
+                MapStep(17, 3, 1.2f);
+                return;
+            case 17:
+                AlleySceneBuilder.Capture("/tmp/juicy-vault-cracked.png");
+                hud.Continue();
+                MapStep(18);
+                return;
+            case 18:
+                AlleySceneBuilder.Capture("/tmp/juicy-map-vault-cracked.png");
+                MapExpect(map.Showing && !UnityEngine.Object.FindAnyObjectByType<AlleyClueReveal>().Showing, "after the vault, a tap goes straight to the map (no clue to scratch)");
+                UnityEngine.Application.logMessageReceived -= CountMapError;
+                MapExpect(mapErrors == 0, "no errors logged during play (" + mapErrors + (mapErrors > 0 ? ", first: " + mapFirstError : "") + ")");
                 System.IO.File.WriteAllText(MapReport, (mapOk ? "PASS" : "FAIL") + " map check\n" + mapLog +
-                    "stills /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win}.png /tmp/juicy-reveal-{covered,half,done,smudged}.png\n");
+                    "stills /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win,vault-open,vault-cracked}.png " +
+                    "/tmp/juicy-reveal-{covered,half,done,smudged}.png /tmp/juicy-finale.png /tmp/juicy-vault-cracked.png\n");
                 SessionState.SetInt(MapStepKey, 90);
                 EditorApplication.isPlaying = false;
                 return;

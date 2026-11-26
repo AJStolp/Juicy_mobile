@@ -56,12 +56,17 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public HeistSortRules Rules { get; private set; }
     public VaultProgress Vault { get; private set; }
-    public ClueRules Clues { get; private set; }
     public LevelRules Level { get; private set; }
     public PlaceProgress Progress { get; private set; }
     public CaseFile CaseFile { get; private set; }
     public PlaceData Place => place;
     public int LevelIndex => levelIndex;
+    // True while the vault (the place's boss) is being played.
+    public bool IsBoss { get; private set; }
+    // The keypad finale of the current vault attempt, once its sort is done.
+    public VaultFinale Finale { get; private set; }
+    // Fires when a vault attempt reaches its target: the keypad takes over.
+    public event System.Action<VaultFinale> FinaleStarted;
     public event System.Action<LevelRules> AttemptStarted;
     public event System.Action<LevelRules> AttemptEnded;
     // True when a map is in the scene and this is not auto play: play then
@@ -106,7 +111,6 @@ public class AlleyChuteDirector : MonoBehaviour
     {
         Rules = new HeistSortRules();
         Vault = new VaultProgress();
-        Clues = new ClueRules(Vault, System.Environment.TickCount);
         if (place == null) throw new System.InvalidOperationException("The chute director has no place to play; rebuild the scene with Wire Gameplay");
         Progress = new PlaceProgress(place.Count);
         CaseFile = new CaseFile(place.Count, place.ClueSeed);
@@ -128,21 +132,18 @@ public class AlleyChuteDirector : MonoBehaviour
         // Bot runs keep their own save and start each run fresh.
         if (autoPlay) PlayerPrefs.DeleteKey(BotSaveKey);
         HeistSave saved = HeistSave.FromJson(PlayerPrefs.GetString(CurrentSaveKey, ""));
-        if (saved != null) saved.Apply(Vault, Rules, Clues, Progress, CaseFile);
-        Vault.Turned += (_, __) => SaveNow();
-        Vault.StageLocked += _ => SaveNow();
-        Vault.RolledBack += (_, __) => SaveNow();
-        Vault.Cracked += _ => SaveNow();
+        if (saved != null) saved.Apply(Rules, Progress, CaseFile);
         Rules.GearChanged += (_, __) => SaveNow();
+        Rules.Sorted += TurnVault;
         levelIndex = Progress.Next;
         BeginLevel();
     }
 
-    // After a win: the clue reveal when there is one, else the map, else
-    // straight into another attempt.
+    // After a win: the clue reveal when there is one (not after the vault,
+    // which holds no clue), else the map, else straight into another attempt.
     public void AfterWin()
     {
-        if (UsesReveal) OpenReveal();
+        if (UsesReveal && !IsBoss) OpenReveal();
         else if (UsesMap) OpenMap();
         else Retry();
     }
@@ -161,14 +162,34 @@ public class AlleyChuteDirector : MonoBehaviour
         MapOpened?.Invoke();
     }
 
-    // Starts a fresh attempt at the level. A fail costs only the attempt:
-    // cash and gear carry over.
-    public void Retry() => Play(levelIndex);
+    // Starts a fresh attempt at the level (or the vault). A fail costs only
+    // the attempt: cash and gear carry over.
+    public void Retry()
+    {
+        if (IsBoss) PlayBoss();
+        else Play(levelIndex);
+    }
 
     // Starts a fresh attempt at one of the place's levels.
     public void Play(int index)
     {
+        IsBoss = false;
         levelIndex = Mathf.Clamp(index, 0, place.Count - 1);
+        Restart();
+    }
+
+    // Starts a fresh attempt at the vault. Only once every level is beaten,
+    // or on auto play, which tunes it.
+    public bool PlayBoss()
+    {
+        if (!Progress.VaultOpen && !autoPlay) return false;
+        IsBoss = true;
+        Restart();
+        return true;
+    }
+
+    void Restart()
+    {
         Rules.StartAttempt();
         BeginLevel();
         spawnTimer = 0f;
@@ -179,15 +200,57 @@ public class AlleyChuteDirector : MonoBehaviour
     void BeginLevel()
     {
         if (Level != null) Level.Dispose();
-        LevelSpec spec = place.Level(levelIndex);
+        Finale = null;
+        LevelSpec spec = IsBoss ? place.Boss : place.Level(levelIndex);
         Rules.MaxChutes = Mathf.Clamp(spec.MaxChutes, 1, drops.Length);
-        Level = new LevelRules(Rules, spec);
+        Level = new LevelRules(Rules, spec) { HoldsWin = IsBoss };
+        if (!IsBoss) return;
+        // The sort locks the first six stages; the finale turns the wheel.
+        Vault.Reset(Mathf.CeilToInt(spec.Target / (float)(VaultProgress.Stages - 1)));
+        Level.TargetMet += StartFinale;
     }
+
+    // During the vault's sort every correct sort turns the door, cash twice.
+    void TurnVault(SortResult result, int side)
+    {
+        if (!IsBoss || Level == null || !Level.Playing || Level.TargetReached) return;
+        if (result == SortResult.Correct) Vault.Turn(1);
+        else if (result == SortResult.Gold) Vault.Turn(LevelRules.GoldWorth);
+    }
+
+    // The clues of every found level, in board order, are the keypad code.
+    void StartFinale(LevelRules level)
+    {
+        Vault.LockThrough(VaultProgress.Stages - 1);
+        var code = new List<int>();
+        for (int i = 0; i < place.Count; i++)
+            if (CaseFile.Found(i)) code.Add(CaseFile.ClueAt(i).Symbol);
+        Finale = new VaultFinale(code);
+        Paused = true;
+        FinaleStarted?.Invoke(Finale);
+    }
+
+    // The keypad reports the finale's end: the wheel turns and the door
+    // swings open on a crack, and either way the attempt ends.
+    public void FinishFinale()
+    {
+        if (!IsBoss || Finale == null || !Finale.Done || !Level.Playing) return;
+        if (Finale.Cracked)
+        {
+            Vault.Turn(Vault.TurnsPerStage);
+            Progress.CrackVault();
+            Rules.Award(VaultPrize);
+        }
+        Level.Finish(Finale.Cracked);
+        EndAttempt();
+    }
+
+    public const double VaultPrize = 25000d;
 
     void EndAttempt()
     {
         Paused = true;
-        if (Level.State == LevelState.Won)
+        if (Level.State == LevelState.Won && !IsBoss)
         {
             Progress.Won(levelIndex);
             CaseFile.Record(levelIndex, Level.BestTier);
@@ -200,7 +263,7 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public void SaveNow()
     {
-        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules, Clues, Progress, CaseFile).ToJson());
+        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Rules, Progress, CaseFile).ToJson());
         PlayerPrefs.Save();
     }
 

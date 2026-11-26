@@ -1,72 +1,63 @@
 using System;
 using UnityEngine;
 
-// How far the crew is into the vault, with no presentation. A vault has seven
-// stages: four corner bolts, the outer ring, the inner ring and the wheel.
-// Turns fill the current stage; a full stage locks for good and the next one
-// starts. A bust takes back part of the current stage only. Locking the last
-// stage cracks the vault, and the next heist starts on a fresh door.
+// How far the crew is into the vault during one boss attempt, with no
+// presentation. A vault has seven stages: four corner bolts, the outer ring,
+// the inner ring and the wheel. Turns fill the current stage; a full stage
+// locks and the next one starts. Locking the last stage cracks the vault.
+// Every boss attempt starts on a fresh door (Reset).
 public class VaultProgress
 {
     public const int Stages = 7;
 
-    // Turns per stage for heist 1, 2, 3...; the last entry holds from then on.
-    // The first vault opens in one sitting; later ones grow.
-    public int[] TurnsByHeist = { 9, 16, 28 };
-    [Range(0f, 1f)] public float RollbackFraction = 0.5f;
-
     public event Action<int, float> Turned;
     public event Action<int> StageLocked;
-    public event Action<int, float> RolledBack;
-    public event Action<int> Cracked;
+    public event Action Cracked;
 
-    public int Heist { get; private set; } = 1;
+    public int TurnsPerStage { get; private set; } = 1;
     public int Stage { get; private set; }
     public int Turns { get; private set; }
+    public bool IsCracked => Stage >= Stages;
 
-    public int TurnsForStage => TurnsFor(Heist);
-    public float StageFraction => (float)Turns / TurnsForStage;
+    public float StageFraction => IsCracked ? 1f : (float)Turns / TurnsPerStage;
 
-    public int TurnsFor(int heist)
+    public void Reset(int turnsPerStage)
     {
-        int index = Mathf.Clamp(heist - 1, 0, TurnsByHeist.Length - 1);
-        return Mathf.Max(1, TurnsByHeist[index]);
+        TurnsPerStage = Mathf.Max(1, turnsPerStage);
+        Stage = 0;
+        Turns = 0;
+        Turned?.Invoke(Stage, 0f);
     }
 
     public void Turn(int amount)
     {
-        if (amount <= 0) return;
+        if (amount <= 0 || IsCracked) return;
         Turns += amount;
-        while (Turns >= TurnsForStage)
+        while (Turns >= TurnsPerStage)
         {
-            Turns -= TurnsForStage;
+            Turns -= TurnsPerStage;
             int locked = Stage;
             Stage++;
             StageLocked?.Invoke(locked);
             if (Stage < Stages) continue;
-
-            int cracked = Heist;
-            Heist++;
-            Stage = 0;
             Turns = 0;
-            Cracked?.Invoke(cracked);
+            Cracked?.Invoke();
             return;
         }
         Turned?.Invoke(Stage, StageFraction);
     }
 
-    public void Bust()
+    // Locks every stage up to (not including) `stage`, for a door that must
+    // show the sort done before the finale.
+    public void LockThrough(int stage)
     {
-        int lost = Mathf.FloorToInt(Turns * RollbackFraction);
-        if (lost <= 0) return;
-        Turns -= lost;
-        RolledBack?.Invoke(Stage, StageFraction);
+        while (Stage < Mathf.Min(stage, Stages) && !IsCracked) Turn(TurnsPerStage - Turns);
     }
 
-    public void Restore(int heist, int stage, int turns)
+    // Poses progress directly, for editor stills.
+    public void Restore(int stage, int turns)
     {
-        Heist = Mathf.Max(1, heist);
         Stage = Mathf.Clamp(stage, 0, Stages - 1);
-        Turns = Mathf.Clamp(turns, 0, TurnsForStage - 1);
+        Turns = Mathf.Clamp(turns, 0, TurnsPerStage - 1);
     }
 }

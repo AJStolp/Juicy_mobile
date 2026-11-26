@@ -56,4 +56,22 @@ public class PlaceProgressTests
         place.Restore(-3);
         Assert.AreEqual(0, place.Beaten);
     }
+
+    [Test]
+    public void TheVaultOpensOnceEveryLevelIsBeatenAndCracksForGood()
+    {
+        var place = new PlaceProgress(2);
+        place.CrackVault();
+        Assert.IsFalse(place.VaultCracked, "a closed vault cannot be cracked");
+        place.Won(0);
+        Assert.IsFalse(place.VaultOpen);
+        place.Won(1);
+        Assert.IsTrue(place.VaultOpen);
+        place.CrackVault();
+        Assert.IsTrue(place.VaultCracked);
+        place.Restore(1, true);
+        Assert.IsFalse(place.VaultCracked, "a save cannot crack a vault that is not open");
+        place.Restore(2, true);
+        Assert.IsTrue(place.VaultCracked);
+    }
 }

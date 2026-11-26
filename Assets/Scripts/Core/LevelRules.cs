@@ -49,6 +49,12 @@ public class LevelRules
     public float Elapsed { get; private set; }
 
     public event Action<LevelRules> Ended;
+    // A boss holds its win at the target for the vault finale: TargetMet
+    // fires, the level stays Playing, and Finish decides it.
+    public bool HoldsWin { get; set; }
+    public bool TargetReached { get; private set; }
+    public bool FailedAtFinale { get; private set; }
+    public event Action<LevelRules> TargetMet;
 
     public LevelRules(HeistSortRules sortRules, LevelSpec spec)
     {
@@ -180,8 +186,26 @@ public class LevelRules
 
     void Check()
     {
-        if (Sorted >= Target) End(LevelState.Won);
+        if (TargetReached) return;
+        if (Sorted >= Target)
+        {
+            if (!HoldsWin)
+            {
+                End(LevelState.Won);
+                return;
+            }
+            TargetReached = true;
+            TargetMet?.Invoke(this);
+        }
         else if (Room < 0) End(LevelState.Failed);
+    }
+
+    // Ends a held win: the vault cracked, or the alarm tripped.
+    public void Finish(bool cracked)
+    {
+        if (!Playing || !TargetReached) return;
+        FailedAtFinale = !cracked;
+        End(cracked ? LevelState.Won : LevelState.Failed);
     }
 
     void End(LevelState state)

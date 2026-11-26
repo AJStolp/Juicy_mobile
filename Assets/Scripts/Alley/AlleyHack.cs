@@ -5,19 +5,22 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// The hack at the vault. When the clue cycle is full the sort pauses, the
-// camera holds on the keypad beside the vault door and its six keys light up:
-// the cycle's clues plus decoys, shuffled each hack. The player taps the clues
-// in the order they were found. A right tap beeps and lights the next ladder
-// step; a wrong tap buzzes, flashes the alley red and ends the hack. ClueRules
-// scores the taps, the payout is applied with the camera back on the vault so
-// a perfect hack is seen turning it, the game saves and the sort resumes.
+// The vault finale, at the keypad beside the vault door. When a vault attempt
+// reaches its target (AlleyChuteDirector.FinaleStarted) the camera holds on
+// the keypad and its six keys light up with the place's clues, plus decoys
+// when fewer were found, shuffled each attempt. The case file runs along the
+// top of the screen: clear clues stay readable, a smudged one fades after a
+// few seconds, a barely readable one never shows (ClueRules). The player taps
+// the clues in board order (VaultFinale): a right tap beeps and lights the
+// next lamp; a wrong tap buzzes and flashes the alley red, and the third trips
+// the alarm. Then the camera goes back to the vault and the director finishes
+// the attempt: the wheel turns and the door swings open on a crack.
 public class AlleyHack : MonoBehaviour
 {
     public const int Keys = 6;
-    public const int LadderLamps = ClueRules.CluesPerHackLater;
+    public const int Lamps = 6;
 
-    // How each clue symbol reads on a key and around the alley.
+    // How each clue symbol reads on a key, a scratch card and the board.
     public static readonly string[] Glyphs = { "$", "#", "%", "&", "@", "?", "!", "+" };
     public static readonly Color[] SymbolColors =
     {
@@ -38,14 +41,15 @@ public class AlleyHack : MonoBehaviour
     static readonly Color LampLit = new Color(0.35f, 1f, 0.45f);
     static readonly Color LampMissed = new Color(1f, 0.12f, 0.1f);
     static readonly Color GlyphInk = new Color(0.03f, 0.03f, 0.04f);
+    static readonly Color Neon = new Color(1f, 0.85f, 0.25f);
+    static readonly Color Paper = new Color(0.97f, 0.95f, 0.9f);
 
     [SerializeField] AlleyChuteDirector director;
-    [SerializeField] AlleyVaultDoor vaultDoor;
     [SerializeField] AlleyCameraRig cameraRig;
+    [SerializeField] Material panelMaterial;
     [SerializeField] Renderer[] keys = new Renderer[Keys];
     [SerializeField] TextMeshPro[] glyphs = new TextMeshPro[Keys];
-    [SerializeField] Renderer[] lamps = new Renderer[LadderLamps];
-    [SerializeField] TextMeshPro[] lampLabels = new TextMeshPro[LadderLamps];
+    [SerializeField] Renderer[] lamps = new Renderer[Lamps];
     [SerializeField] Transform viewPoint;
     [SerializeField] Light keypadLight;
     [SerializeField] Light alarmLight;
@@ -53,52 +57,49 @@ public class AlleyHack : MonoBehaviour
     [SerializeField] float keypadLightIntensity = 0.5f;
     [SerializeField] float alarmIntensity = 30f;
     [SerializeField] float alarmSeconds = 1.2f;
-    [Tooltip("Chance the bot taps each step right, so bot runs see both perfect and failed hacks.")]
+    [Tooltip("Chance auto play taps each step right, so bot runs see cracks and trips.")]
     [Range(0f, 1f)] [SerializeField] float botAccuracy = 0.85f;
     [SerializeField] float botTapGap = 0.6f;
 
     readonly int[] keySymbols = new int[Keys];
     readonly float[] keyPunch = new float[Keys];
-    readonly List<int> taps = new List<int>();
     Vector3[] keyScale;
     MaterialPropertyBlock block;
     Camera view;
     System.Random shuffle;
+    CameraOverlay overlay;
+    GameObject strip;
+    TextMeshPro[] stripGlyphs;
+    Renderer[] stripCards;
+    float[] stripHideAt;
+    bool[] stripEntered;
+    TextMeshPro alarmText;
+    float startedAt;
     bool awaitingTap;
     int tappedKey = -1;
     float autoTimer;
-    int autoWrongAt = -1;
     int scriptedWrongAt = -2;
+    int autoWrongAt = -1;
 
     public bool Running { get; private set; }
-    public int Hacks { get; private set; }
-    public int Perfects { get; private set; }
-    public HackReward LastReward { get; private set; }
-    public int LastClueCount { get; private set; }
     public IReadOnlyList<int> KeySymbols => keySymbols;
-    public float BotAccuracy { get => botAccuracy; set => botAccuracy = Mathf.Clamp01(value); }
 
-    // Fires once a hack's payout has been applied: the reward and how many
-    // clues the cycle held.
-    public event Action<HackReward, int> Finished;
-
-    public void Configure(AlleyChuteDirector chute, AlleyVaultDoor door, AlleyCameraRig rig, Renderer[] keyRenderers, TextMeshPro[] keyGlyphs,
-        Renderer[] ladderLamps, TextMeshPro[] ladderLabels, Transform cameraSpot, Light padLight, Light alarm)
+    public void Configure(AlleyChuteDirector chute, AlleyCameraRig rig, Material overlayMaterial, Renderer[] keyRenderers, TextMeshPro[] keyGlyphs,
+        Renderer[] progressLamps, Transform cameraSpot, Light padLight, Light alarm)
     {
         director = chute;
-        vaultDoor = door;
         cameraRig = rig;
+        panelMaterial = overlayMaterial;
         keys = keyRenderers;
         glyphs = keyGlyphs;
-        lamps = ladderLamps;
-        lampLabels = ladderLabels;
+        lamps = progressLamps;
         viewPoint = cameraSpot;
         keypadLight = padLight;
         alarmLight = alarm;
     }
 
-    // The next hack taps on its own: every step right, or wrong at the given
-    // tap (0 based). Used by the batch captures.
+    // The next finale taps on its own: every step right, or one wrong tap at
+    // the given step (0 based). Used by the batch checks.
     public void ScriptNext(int wrongAt) => scriptedWrongAt = wrongAt;
 
     void Awake()
@@ -113,42 +114,42 @@ public class AlleyHack : MonoBehaviour
         Dim();
     }
 
+    void Start()
+    {
+        overlay = new CameraOverlay(view, panelMaterial, 0.38f, CameraOverlay.LayerFinale);
+        director.FinaleStarted += Begin;
+    }
+
+    void OnDestroy()
+    {
+        if (director != null) director.FinaleStarted -= Begin;
+    }
+
+    void Begin(VaultFinale finale)
+    {
+        if (!Running) StartCoroutine(Run(finale));
+    }
+
     void Update()
     {
-        if (!Running)
-        {
-            if (Ready()) StartCoroutine(Run());
-            return;
-        }
+        if (!Running) return;
         for (int i = 0; i < keys.Length; i++)
         {
             keyPunch[i] = Mathf.MoveTowards(keyPunch[i], 0f, Time.deltaTime * 6f);
             keys[i].transform.localScale = new Vector3(keyScale[i].x, keyScale[i].y, keyScale[i].z * (1f - 0.6f * keyPunch[i]));
         }
+        FadeStrip();
         if (awaitingTap) ReadTap();
     }
 
-    // The hack starts once the cycle is full and nothing else holds the alley:
-    // no other round paused the sort and no vault crack is playing.
-    bool Ready()
-    {
-        if (director == null || director.Clues == null || !director.Clues.HackDue) return false;
-        if (director.Paused) return false;
-        return vaultDoor == null || !vaultDoor.Cracking;
-    }
-
-    IEnumerator Run()
+    IEnumerator Run(VaultFinale finale)
     {
         Running = true;
-        director.Paused = true;
-        ClueRules clues = director.Clues;
-        int count = clues.Count;
-        LastClueCount = count;
         bool auto = scriptedWrongAt != -2 || director.AutoPlay;
-        autoWrongAt = scriptedWrongAt != -2 ? scriptedWrongAt : BotWrongAt(count);
+        autoWrongAt = scriptedWrongAt;
         scriptedWrongAt = -2;
 
-        LayOut(clues);
+        LayOut(finale);
         cameraRig.Hold(viewPoint.position, viewPoint.position + viewPoint.forward, viewFov);
         for (float t = 0f; t < 0.5f; t += Time.deltaTime)
         {
@@ -157,43 +158,40 @@ public class AlleyHack : MonoBehaviour
         }
         if (keypadLight != null) keypadLight.intensity = keypadLightIntensity;
         while (!cameraRig.Settled) yield return null;
+        // Built once the camera has zoomed in on the keypad, since the strip
+        // is sized to the view it is drawn in; clarity timing starts here.
+        startedAt = Time.time;
+        BuildStrip(finale);
 
-        taps.Clear();
-        bool failed = false;
-        while (taps.Count < count && !failed)
+        while (!finale.Done)
         {
             tappedKey = -1;
             autoTimer = botTapGap;
             awaitingTap = true;
             while (tappedKey < 0)
             {
-                if (auto) TickAuto(clues);
+                if (auto) TickAuto(finale);
                 yield return null;
             }
             awaitingTap = false;
-            int step = taps.Count;
-            int symbol = keySymbols[tappedKey];
+            int step = finale.Step;
             keyPunch[tappedKey] = 1f;
-            taps.Add(symbol);
-            if (symbol == clues.Clues[step].Symbol)
+            FinaleTap result = finale.Tap(keySymbols[tappedKey]);
+            if (result == FinaleTap.Right || result == FinaleTap.Cracked)
             {
                 JuicyAudioHooks.Beep();
-                PaintLamp(step, LampLit, 1.2f);
+                if (step < lamps.Length) PaintLamp(step, LampLit, 1.2f);
+                MarkStrip(step);
+                continue;
             }
-            else
-            {
-                failed = true;
-                JuicyAudioHooks.Buzz();
-                PaintLamp(step, LampMissed, 1.2f);
-                cameraRig.Shake(0.4f);
-                yield return Alarm();
-            }
+            JuicyAudioHooks.Buzz();
+            cameraRig.Shake(0.4f);
+            alarmText.text = finale.Tripped ? "ALARM TRIPPED" : AlarmsLine(finale.AlarmsLeft);
+            yield return Alarm();
         }
 
-        // Scored now so the keypad clears with the cycle; paid once the camera
-        // is back on the vault.
-        HackReward reward = clues.Hack(taps);
-        if (!failed) yield return new WaitForSeconds(0.8f);
+        yield return new WaitForSeconds(0.8f);
+        ClearStrip();
         cameraRig.Release();
         for (float t = 0f; t < 0.5f; t += Time.deltaTime)
         {
@@ -202,36 +200,22 @@ public class AlleyHack : MonoBehaviour
         }
         Dim();
         while (!cameraRig.Settled) yield return null;
-
-        reward.Apply(director.Rules, director.Vault);
-        if (reward.Cash > 0d || reward.Bribes > 0 || reward.Drills > 0) JuicyAudioHooks.Chime();
-        director.SaveNow();
-        Hacks++;
-        if (reward.Perfect) Perfects++;
-        LastReward = reward;
-        Finished?.Invoke(reward, count);
-        // Let a perfect hack's turn land on the door before items fall again.
-        if (reward.Turns > 0) yield return new WaitForSeconds(1.2f);
-        director.Paused = false;
         Running = false;
+        director.FinishFinale();
     }
 
-    // The bot taps every step right with botAccuracy each, so the first miss
-    // is where its hack ends. -1 means a perfect hack.
-    int BotWrongAt(int count)
-    {
-        for (int i = 0; i < count; i++)
-            if (UnityEngine.Random.value >= botAccuracy) return i;
-        return -1;
-    }
+    static string AlarmsLine(int left) => left == 1 ? "1 ALARM LEFT" : left + " ALARMS LEFT";
 
-    void TickAuto(ClueRules clues)
+    // Auto play taps the wanted key, or a wrong one: once at the scripted
+    // step, or by chance at botAccuracy when not scripted.
+    void TickAuto(VaultFinale finale)
     {
         autoTimer -= Time.deltaTime;
         if (autoTimer > 0f) return;
-        int step = taps.Count;
-        int expected = clues.Clues[step].Symbol;
-        bool wrong = step == autoWrongAt;
+        bool wrong = autoWrongAt >= -1
+            ? finale.Step == autoWrongAt && finale.AlarmsLeft == VaultFinale.Alarms
+            : UnityEngine.Random.value >= botAccuracy;
+        int expected = finale.Expected;
         for (int i = 0; i < Keys; i++)
         {
             if ((keySymbols[i] == expected) != wrong)
@@ -257,12 +241,13 @@ public class AlleyHack : MonoBehaviour
         }
     }
 
-    // The cycle's clues plus decoys from the rest of the pool, in shuffled
-    // key positions, and the ladder's rungs labeled with what each pays.
-    void LayOut(ClueRules clues)
+    // The code's symbols plus decoys from the rest of the pool, in shuffled
+    // key positions, and one dark lamp per clue to enter.
+    void LayOut(VaultFinale finale)
     {
         var symbols = new List<int>();
-        for (int i = 0; i < clues.Count && symbols.Count < Keys; i++) symbols.Add(clues.Clues[i].Symbol);
+        foreach (int s in finale.Code)
+            if (!symbols.Contains(s) && symbols.Count < Keys) symbols.Add(s);
         var decoys = new List<int>();
         for (int s = 0; s < ClueRules.SymbolPool; s++)
             if (!symbols.Contains(s)) decoys.Add(s);
@@ -278,25 +263,69 @@ public class AlleyHack : MonoBehaviour
         }
         for (int i = 0; i < lamps.Length; i++)
         {
-            bool used = i < clues.Count;
+            bool used = i < finale.Count;
             lamps[i].gameObject.SetActive(used);
-            if (!used) continue;
-            lampLabels[i].text = RungLabel(clues.Count, i);
-            PaintLamp(i, LampDark, 0f);
+            if (used) PaintLamp(i, LampDark, 0f);
         }
     }
 
-    // What the step after i correct taps adds, read from ClueRules' ladder.
-    public static string RungLabel(int clueCount, int index)
+    // The case file along the top: one card per clue, readable for as long as
+    // its clarity allows, lit once it is entered.
+    void ClearStrip()
     {
-        HackReward before = ClueRules.RewardFor(clueCount, index);
-        HackReward after = ClueRules.RewardFor(clueCount, index + 1);
-        var parts = new List<string>();
-        if (after.Cash > before.Cash) parts.Add("$" + (after.Cash - before.Cash).ToString("0"));
-        if (after.Bribes > before.Bribes) parts.Add("BRIBE");
-        if (after.Drills > before.Drills) parts.Add("DRILL");
-        if (after.Turns > before.Turns) parts.Add("VAULT");
-        return string.Join("\n", parts);
+        if (strip != null) Destroy(strip);
+        strip = null;
+        stripGlyphs = null;
+        stripCards = null;
+    }
+
+    void BuildStrip(VaultFinale finale)
+    {
+        ClearStrip();
+        strip = new GameObject("Finale_Strip");
+        strip.transform.SetParent(view.transform, false);
+        Transform root = strip.transform;
+        overlay.Quad(root, "Back", new Vector2(0.5f, 0.885f), new Vector2(1.2f, 0.17f), new Color(0.01f, 0.01f, 0.03f, 0.75f), 0.006f);
+        TextMeshPro title = overlay.Text(root, "Title", new Vector2(0.5f, 0.945f), new Vector2(0.9f, 0.03f), Neon);
+        title.text = "ENTER YOUR CLUES IN ORDER";
+        alarmText = overlay.Text(root, "Alarms", new Vector2(0.5f, 0.825f), new Vector2(0.6f, 0.022f), Color.white);
+        alarmText.text = AlarmsLine(finale.AlarmsLeft);
+
+        int count = finale.Count;
+        stripGlyphs = new TextMeshPro[count];
+        stripCards = new Renderer[count];
+        stripHideAt = new float[count];
+        stripEntered = new bool[count];
+        int clue = 0;
+        for (int level = 0; level < director.Place.Count && clue < count; level++)
+        {
+            if (!director.CaseFile.Found(level)) continue;
+            Clue found = director.CaseFile.ClueAt(level);
+            float x = count == 1 ? 0.5f : 0.15f + 0.7f * clue / (count - 1);
+            Vector2 at = new Vector2(x, 0.885f);
+            stripCards[clue] = overlay.Quad(root, "Card_" + clue, at, new Vector2(0.1f, 0.06f), Paper, 0.004f);
+            stripGlyphs[clue] = overlay.Text(root, "Glyph_" + clue, at, new Vector2(0.08f, 0.04f), SymbolColors[found.Symbol]);
+            stripGlyphs[clue].text = Glyphs[found.Symbol];
+            stripHideAt[clue] = startedAt + ClueRules.FinaleSecondsFor(found.Tier);
+            clue++;
+        }
+        FadeStrip();
+    }
+
+    void FadeStrip()
+    {
+        if (stripGlyphs == null) return;
+        for (int i = 0; i < stripGlyphs.Length; i++)
+            stripGlyphs[i].enabled = stripEntered[i] || Time.time < stripHideAt[i];
+    }
+
+    void MarkStrip(int step)
+    {
+        if (stripGlyphs == null || step >= stripGlyphs.Length) return;
+        // An entered clue stays readable.
+        stripEntered[step] = true;
+        overlay.Tint(stripCards[step], LampLit);
+        FadeStrip();
     }
 
     void Shuffle(List<int> list)
@@ -328,18 +357,16 @@ public class AlleyHack : MonoBehaviour
             glyphs[i].color = new Color(1f, 1f, 1f, 0.15f);
             PaintKey(i, KeyDark, 0f);
         }
-        for (int i = 0; i < lamps.Length; i++) PaintLamp(i, LampDark, 0f);
+        for (int i = 0; i < lamps.Length; i++)
+        {
+            lamps[i].gameObject.SetActive(true);
+            PaintLamp(i, LampDark, 0f);
+        }
     }
 
-    void PaintKey(int index, Color color, float glow)
-    {
-        Paint(keys[index], color, glow);
-    }
+    void PaintKey(int index, Color color, float glow) => Paint(keys[index], color, glow);
 
-    void PaintLamp(int index, Color color, float glow)
-    {
-        Paint(lamps[index], color, glow);
-    }
+    void PaintLamp(int index, Color color, float glow) => Paint(lamps[index], color, glow);
 
     void Paint(Renderer target, Color color, float glow)
     {

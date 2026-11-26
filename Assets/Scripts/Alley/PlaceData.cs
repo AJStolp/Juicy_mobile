@@ -1,6 +1,6 @@
 using UnityEngine;
 
-// A place on the map: its levels in order, the boss last.
+// A place on the map: its levels in order, then its vault (the boss).
 [CreateAssetMenu(menuName = "Juicy/Place")]
 public class PlaceData : ScriptableObject
 {
@@ -8,6 +8,8 @@ public class PlaceData : ScriptableObject
     [Tooltip("Sets which clue symbol each level holds.")]
     public int ClueSeed = 7;
     public LevelSpec[] Levels = { new LevelSpec() };
+    [Tooltip("The vault: opens once every level is beaten, and ends in the keypad finale.")]
+    public LevelSpec Boss = new LevelSpec { Name = "The Vault" };
 
     public int Count => Levels.Length;
 

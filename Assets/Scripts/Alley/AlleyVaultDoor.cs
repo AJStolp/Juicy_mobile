@@ -4,9 +4,10 @@ using UnityEngine;
 // The vault door is the progress meter, on the graffiti facade's own door.
 // Stages 0 to 3 slide its three locking bars and then its handle, stage 4
 // turns the gear lock, and the wheel turns a little with every stage.
-// Progress creeps forward quickly and grinds back slowly on a bust. Cracking
-// the vault spins the wheel and swings the door open on a flood of light,
-// then the door closes on a fresh vault.
+// It turns during the vault boss (VaultProgress): progress creeps forward
+// quickly, and grinds back slowly to a fresh door when a new attempt starts.
+// Cracking the vault spins the wheel and swings the door open on a flood of
+// light, then the door closes again.
 public class AlleyVaultDoor : MonoBehaviour
 {
     const int Bolts = 4;
@@ -42,7 +43,6 @@ public class AlleyVaultDoor : MonoBehaviour
 
     public bool Cracking => cracking;
     public int Pops { get; private set; }
-    public int Rollbacks { get; private set; }
     public int Cracks { get; private set; }
     public Vector3 Focus => wheel != null ? wheel.position : transform.position;
 
@@ -66,7 +66,6 @@ public class AlleyVaultDoor : MonoBehaviour
         Unbind();
         vault = progress;
         vault.StageLocked += OnStageLocked;
-        vault.RolledBack += OnRolledBack;
         vault.Cracked += OnCracked;
         Snap();
     }
@@ -144,7 +143,6 @@ public class AlleyVaultDoor : MonoBehaviour
     {
         if (vault == null) return;
         vault.StageLocked -= OnStageLocked;
-        vault.RolledBack -= OnRolledBack;
         vault.Cracked -= OnCracked;
         vault = null;
     }
@@ -180,13 +178,7 @@ public class AlleyVaultDoor : MonoBehaviour
         }
     }
 
-    void OnRolledBack(int stage, float fraction)
-    {
-        Rollbacks++;
-        if (cameraRig != null) cameraRig.Push(Focus, 0.12f, 1.4f);
-    }
-
-    void OnCracked(int heist)
+    void OnCracked()
     {
         Cracks++;
         StartCoroutine(Crack());

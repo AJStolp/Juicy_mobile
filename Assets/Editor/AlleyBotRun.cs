@@ -134,7 +134,8 @@ public static class AlleyBotRun
         bool filmOnly = SessionState.GetBool("JuicyBotFilmOnly", false);
         if (!filmOnly)
         {
-            for (int level = 0; level < director.Place.Count; level++)
+            // Every level, then the vault (Boss) with every clue found clear.
+            for (int level = 0; level <= director.Place.Count; level++)
             {
                 for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Careful });
                 for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Sloppy });
@@ -169,7 +170,14 @@ public static class AlleyBotRun
             Time.timeScale = Speed;
         }
         attemptStart = Time.time;
-        director.Play(run.Level);
+        if (run.Level < director.Place.Count) director.Play(run.Level);
+        else
+        {
+            var clear = new int[director.Place.Count];
+            for (int i = 0; i < clear.Length; i++) clear[i] = ClueRules.MaxTier;
+            director.CaseFile.Restore(clear);
+            director.PlayBoss();
+        }
     }
 
     static void Ended(AlleyChuteDirector director, LevelRules level)
@@ -179,7 +187,9 @@ public static class AlleyBotRun
         string line = LevelLabel(run.Level, level.Spec) + " mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
             " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost + " cash " + level.GoldCaught +
             (won ? " misses to spare " + level.MissesLeft : " short " + level.ShortBy) +
-            " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0");
+            " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0") +
+            (director.IsBoss && director.Finale != null ? " finale " + director.Finale.Step + "/" + director.Finale.Count + " alarms left " + director.Finale.AlarmsLeft +
+                (level.FailedAtFinale ? " TRIPPED" : "") : "");
         if (!run.Film)
         {
             lines.Add(line);
@@ -315,7 +325,7 @@ public static class AlleyBotRun
     {
         var log = new System.Text.StringBuilder();
         log.AppendLine("place " + director.Place.PlaceName + ", " + director.Place.Count + " levels:");
-        foreach (LevelSpec spec in director.Place.Levels)
+        foreach (LevelSpec spec in AllLevels(director.Place))
             log.AppendLine("  " + spec.Name + ": target " + spec.Target + " with " + spec.Misses + " misses to spare, " + spec.Dynamite + " dynamite, " +
                 spec.Cash + " cash, seed " + spec.Seed + ", a drop every " + spec.DropEvery.ToString("0.00") + "s, falling " +
                 spec.FallSpeed.ToString("0.0") + " m/s, up to " + spec.MaxChutes + " chutes" + (spec.Hint.Length > 0 ? ", hint \"" + spec.Hint + "\"" : ""));
@@ -323,9 +333,10 @@ public static class AlleyBotRun
         log.AppendLine("game seconds " + now.ToString("0") + "; spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses);
         log.AppendLine();
         log.AppendLine("summary:");
-        foreach (LevelSpec spec in director.Place.Levels)
+        var all = AllLevels(director.Place);
+        for (int i = 0; i < all.Count; i++)
             foreach (float mistakes in new[] { Careful, Sloppy })
-                log.AppendLine("  " + Summary(LevelLabel(System.Array.IndexOf(director.Place.Levels, spec), spec), mistakes));
+                log.AppendLine("  " + Summary(LevelLabel(i, all[i]), mistakes));
         log.AppendLine();
         log.AppendLine("attempts:");
         foreach (string line in lines) log.AppendLine("  " + line);
@@ -342,6 +353,14 @@ public static class AlleyBotRun
 
     // Numbered, so two levels with the same name never share a summary line.
     static string LevelLabel(int index, LevelSpec spec) => (index + 1) + ". " + spec.Name;
+
+    // The place's levels, then its vault.
+    static List<LevelSpec> AllLevels(PlaceData place)
+    {
+        var all = new List<LevelSpec>(place.Levels);
+        all.Add(place.Boss);
+        return all;
+    }
 
     static string Summary(string level, float mistakes)
     {
