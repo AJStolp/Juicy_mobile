@@ -2,13 +2,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// Runs one level of the heist sort in the alley. Gems fall from the open
-// chutes; the player swipes left or right to send one into that side's color
-// chest, or up to trash it. HeistSortRules decides what each outcome is worth,
-// and LevelRules decides when the attempt is won or failed and the order the
-// gems come in. Only gems fall:
-// the other items, the vault turning and the clue hack wait for the levels
-// that bring them back (T-026). Cash and gear are saved between sittings.
+// Runs one level of the heist sort in the alley. Gems, dynamite and gold fall
+// from the open chutes; the player swipes left or right to send one into that
+// side's color chest, or up to flick it away. HeistSortRules decides what each
+// outcome is worth, and LevelRules decides the order things fall in and when
+// the attempt is won or failed. Letters, the vault turning and the clue hack
+// wait for the boss (T-026). Cash and gear are saved between sittings.
 public class AlleyChuteDirector : MonoBehaviour
 {
     // Chutes open centre first: Drop_02, Drop_03, Drop_01, then Drop_04.
@@ -33,10 +32,16 @@ public class AlleyChuteDirector : MonoBehaviour
     [SerializeField] int levelIndex;
     [SerializeField] bool autoPlay;
     [Range(0f, 1f)] [SerializeField] float autoMistakes = 0.12f;
+    [Tooltip("Auto play waits this long after a drop appears before it can swipe it, like a person.")]
+    [SerializeField] float autoReact = 0.45f;
+    [Tooltip("Auto play's shortest gap between two swipes.")]
+    [SerializeField] float autoSwipeGap = 0.3f;
 
     readonly List<AlleyItem> live = new List<AlleyItem>();
     readonly Queue<AlleyItem> idle = new Queue<AlleyItem>();
     readonly HashSet<AlleyItem> botSkipped = new HashSet<AlleyItem>();
+    readonly Dictionary<AlleyItem, float> launchedAt = new Dictionary<AlleyItem, float>();
+    float botReadyAt;
     Camera view;
     float spawnTimer;
     bool pressing;
@@ -69,6 +74,7 @@ public class AlleyChuteDirector : MonoBehaviour
             paused = value;
         }
     }
+    public IReadOnlyList<AlleyItem> Live => live;
     public int Spawned { get; private set; }
     public int Flicks { get; private set; }
     public int Misses { get; private set; }
@@ -181,14 +187,15 @@ public class AlleyChuteDirector : MonoBehaviour
     {
         spawnTimer += dt;
         if (spawnTimer < Level.Spec.DropEvery || idle.Count == 0) return;
-        if (!Level.Drop(out int colorId, out float chuteRoll)) return;
+        if (!Level.Drop(out LevelRules.Item next)) return;
         spawnTimer = 0f;
 
         AlleyItem item = idle.Dequeue();
-        int chute = Mathf.Min((int)(chuteRoll * Rules.Chutes), Rules.Chutes - 1);
+        int chute = Mathf.Min((int)(next.ChuteRoll * Rules.Chutes), Rules.Chutes - 1);
         Transform drop = drops[ChuteOrder[chute]];
-        item.Launch(ItemKind.Gem, colorId, GemColor(colorId), '\0', drop.position);
+        item.Launch(next.Kind, next.ColorId, GemColor(next.ColorId), '\0', drop.position);
         live.Add(item);
+        launchedAt[item] = Time.time;
         Spawned++;
     }
 
@@ -287,6 +294,7 @@ public class AlleyChuteDirector : MonoBehaviour
         live[index] = live[live.Count - 1];
         live.RemoveAt(live.Count - 1);
         botSkipped.Remove(item);
+        launchedAt.Remove(item);
         item.Park();
         idle.Enqueue(item);
     }
@@ -311,22 +319,29 @@ public class AlleyChuteDirector : MonoBehaviour
     // and makes a deliberate mistake now and then.
     void TickBot()
     {
+        // Paced like a person: a drop has to have been seen for autoReact
+        // before it can be swiped, one swipe per autoSwipeGap, lowest first.
+        if (Time.time < botReadyAt) return;
+        AlleyItem target = null;
         for (int i = 0; i < live.Count; i++)
         {
             AlleyItem item = live[i];
-            if (item.State != AlleyItem.Phase.Falling || item.transform.position.y > 1.5f) continue;
-            if (botSkipped.Contains(item)) continue;
-            if (Random.value < autoMistakes * 0.3f)
-            {
-                botSkipped.Add(item);
-                continue;
-            }
-            bool mistake = Random.value < autoMistakes;
-            int direction;
-            if (item.Kind == ItemKind.Bomb) direction = mistake ? -1 : 2;
-            else if (item.Kind == ItemKind.Gem) direction = (item.ColorId == 0) != mistake ? -1 : 1;
-            else direction = Random.value < 0.5f ? -1 : 1;
-            Fling(item, direction);
+            if (item.State != AlleyItem.Phase.Falling || botSkipped.Contains(item)) continue;
+            if (!launchedAt.TryGetValue(item, out float at) || Time.time - at < autoReact) continue;
+            if (target == null || item.transform.position.y < target.transform.position.y) target = item;
         }
+        if (target == null) return;
+        botReadyAt = Time.time + autoSwipeGap;
+        if (Random.value < autoMistakes * 0.3f)
+        {
+            botSkipped.Add(target);
+            return;
+        }
+        bool mistake = Random.value < autoMistakes;
+        int direction;
+        if (target.Kind == ItemKind.Bomb) direction = mistake ? -1 : 2;
+        else if (target.Kind == ItemKind.Gem) direction = (target.ColorId == 0) != mistake ? -1 : 1;
+        else direction = Random.value < 0.5f ? -1 : 1;
+        Fling(target, direction);
     }
 }

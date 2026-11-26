@@ -11,7 +11,7 @@ using UnityEngine.PlayerLoop;
 //   1. Numbers: for every level of the place, Attempts tries by a careful bot
 //      (10% mistakes) and a sloppy one (30%), at 4x. Each attempt's result,
 //      gems to spare or short, and length in game seconds.
-//   2. Film: one won and one failed attempt of the first level at 1x with a fixed 30 frames per
+//   2. Film: one won and one failed attempt of City 4 (FilmLevel) at 1x with a fixed 30 frames per
 //      game second. The last FilmSeconds of the attempt and the result panel
 //      after it land in /tmp/juicy-level-film/<won|failed>/ as numbered jpgs,
 //      ready for ffmpeg.
@@ -25,12 +25,17 @@ public static class AlleyBotRun
     const string Progress = "/tmp/juicy-bot-progress.txt";
     const string FilmRoot = "/tmp/juicy-level-film";
     const string HomeStill = "/tmp/juicy-level-home.png";
+    const string BannerStill = "/tmp/juicy-level-banner.png";
+    const string DynamiteStill = "/tmp/juicy-level-dynamite.png";
+    const string GoldStill = "/tmp/juicy-level-cash.png";
     const float Speed = 4f;
-    const int Attempts = 6;
+    const int Attempts = 4;
+    // City 4: the first level with dynamite and gold both, so the films show every item.
+    const int FilmLevel = 3;
     const float Careful = 0.1f;
     const float Sloppy = 0.3f;
     const float FilmWinMistakes = 0.05f;
-    const float FilmFailMistakes = 0.4f;
+    const float FilmFailMistakes = 0.2f;
     const int FilmTries = 3;
     const int FilmFps = 30;
     const float FilmSeconds = 12f;
@@ -61,6 +66,9 @@ public static class AlleyBotRun
     static int ring;
     static int afterEnd = -1;
     static bool homeTaken;
+    static bool bannerTaken;
+    static bool dynamiteTaken;
+    static bool goldTaken;
     static RenderTexture filmBuffer;
     static Texture2D filmImage;
 
@@ -132,8 +140,8 @@ public static class AlleyBotRun
                 for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Sloppy });
             }
         }
-        plan.Add(new Run { Mistakes = FilmWinMistakes, Film = true, WantWin = true });
-        plan.Add(new Run { Mistakes = FilmFailMistakes, Film = true, WantWin = false });
+        plan.Add(new Run { Level = FilmLevel, Mistakes = FilmWinMistakes, Film = true, WantWin = true });
+        plan.Add(new Run { Level = FilmLevel, Mistakes = FilmFailMistakes, Film = true, WantWin = false });
         director.AttemptEnded += level => Ended(director, level);
         FilmEveryFrame(true);
         Next(director);
@@ -169,7 +177,7 @@ public static class AlleyBotRun
         Run run = plan[current];
         bool won = level.State == LevelState.Won;
         string line = LevelLabel(run.Level, level.Spec) + " mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
-            " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost +
+            " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost + " cash " + level.GoldCaught +
             (won ? " misses to spare " + level.MissesLeft : " short " + level.ShortBy) +
             " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0");
         if (!run.Film)
@@ -209,6 +217,26 @@ public static class AlleyBotRun
         {
             homeTaken = true;
             AlleySceneBuilder.Capture(HomeStill);
+        }
+        if (!bannerTaken && run.WantWin && Time.time - attemptStart >= 1f)
+        {
+            bannerTaken = true;
+            AlleySceneBuilder.Capture(BannerStill);
+        }
+        // The first dynamite and the first gold well into view, for a still of each.
+        foreach (AlleyItem item in director.Live)
+        {
+            if (item.State != AlleyItem.Phase.Falling || item.transform.position.y > 3f) continue;
+            if (!dynamiteTaken && item.Kind == ItemKind.Bomb)
+            {
+                dynamiteTaken = true;
+                AlleySceneBuilder.Capture(DynamiteStill);
+            }
+            else if (!goldTaken && item.Kind == ItemKind.Gold)
+            {
+                goldTaken = true;
+                AlleySceneBuilder.Capture(GoldStill);
+            }
         }
         if (afterEnd < 0 && !director.Level.Playing) return;
         int slots = Mathf.RoundToInt(FilmSeconds * FilmFps);
@@ -288,9 +316,10 @@ public static class AlleyBotRun
         var log = new System.Text.StringBuilder();
         log.AppendLine("place " + director.Place.PlaceName + ", " + director.Place.Count + " levels:");
         foreach (LevelSpec spec in director.Place.Levels)
-            log.AppendLine("  " + spec.Name + ": target " + spec.Target + " of " + spec.Gems + " gems, seed " + spec.Seed + ", a gem every " +
-                spec.DropEvery.ToString("0.00") + "s, falling " + spec.FallSpeed.ToString("0.0") + " m/s, up to " + spec.MaxChutes + " chutes");
-        log.AppendLine("numbers at " + Speed + "x, " + Attempts + " attempts per bot per level; film of the first level at 1x, " + FilmFps + " fps");
+            log.AppendLine("  " + spec.Name + ": target " + spec.Target + " with " + spec.Misses + " misses to spare, " + spec.Dynamite + " dynamite, " +
+                spec.Cash + " cash, seed " + spec.Seed + ", a drop every " + spec.DropEvery.ToString("0.00") + "s, falling " +
+                spec.FallSpeed.ToString("0.0") + " m/s, up to " + spec.MaxChutes + " chutes" + (spec.Hint.Length > 0 ? ", hint \"" + spec.Hint + "\"" : ""));
+        log.AppendLine("numbers at " + Speed + "x, " + Attempts + " attempts per bot per level; film of level " + (FilmLevel + 1) + " at 1x, " + FilmFps + " fps");
         log.AppendLine("game seconds " + now.ToString("0") + "; spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses);
         log.AppendLine();
         log.AppendLine("summary:");
@@ -304,6 +333,8 @@ public static class AlleyBotRun
         log.AppendLine("film:");
         foreach (string line in filmLines) log.AppendLine("  " + line);
         log.AppendLine("home still " + (homeTaken ? HomeStill : "not taken"));
+        log.AppendLine("banner still " + (bannerTaken ? BannerStill : "not taken") + "; dynamite still " + (dynamiteTaken ? DynamiteStill : "not taken") +
+            "; cash still " + (goldTaken ? GoldStill : "not taken"));
         log.AppendLine("finished all " + plan.Count + " planned attempts " + (current >= plan.Count));
         log.AppendLine("errors " + errors + (errors > 0 ? " first: " + firstError : ""));
         return log.ToString();

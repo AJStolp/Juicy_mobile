@@ -25,6 +25,9 @@ public class AlleyLevelHud : MonoBehaviour
     TextMeshPro titleText;
     TextMeshPro detailText;
     TextMeshPro retryText;
+    TextMeshPro bannerText;
+    TextMeshPro hintText;
+    float bannerUntil;
     MaterialPropertyBlock block;
     float punch;
     int lastSorted;
@@ -58,14 +61,31 @@ public class AlleyLevelHud : MonoBehaviour
         retryText.text = "TAP TO TRY AGAIN";
         panel.SetActive(false);
 
+        // The level's name, and its hint when it brings in something new.
+        bannerText = Text("Banner", new Vector2(0.5f, 0.66f), new Vector2(0.8f, 0.06f), Neon);
+        hintText = Text("Hint", new Vector2(0.5f, 0.6f), new Vector2(0.86f, 0.04f), Color.white);
+
         director.AttemptEnded += ShowResult;
-        director.AttemptStarted += _ => panel.SetActive(false);
+        director.AttemptStarted += ShowBanner;
+        ShowBanner(director.Level);
+    }
+
+    const float BannerSeconds = 3f;
+
+    void ShowBanner(LevelRules level)
+    {
+        panel.SetActive(false);
+        if (level == null) return;
+        bannerText.text = level.Spec.Name.ToUpperInvariant();
+        hintText.text = level.Spec.Hint.ToUpperInvariant();
+        bannerUntil = Time.time + BannerSeconds;
     }
 
     void OnDestroy()
     {
         if (director == null) return;
         director.AttemptEnded -= ShowResult;
+        director.AttemptStarted -= ShowBanner;
     }
 
     void Update()
@@ -82,6 +102,9 @@ public class AlleyLevelHud : MonoBehaviour
         gemsText.transform.localScale = Vector3.one * (1f + punch * 0.08f);
         limitText.text = "MISSES LEFT " + level.MissesLeft;
         limitText.color = level.MissesLeft <= 3 ? Fail : Color.white;
+        bool banner = Time.time < bannerUntil && !ShowingResult;
+        bannerText.gameObject.SetActive(banner);
+        hintText.gameObject.SetActive(banner && hintText.text.Length > 0);
         if (ShowingResult) TickRetry();
     }
 

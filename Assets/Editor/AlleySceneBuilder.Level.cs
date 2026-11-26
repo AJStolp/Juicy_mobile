@@ -18,8 +18,12 @@ public static partial class AlleySceneBuilder
         city.PlaceName = "City";
         city.Levels = new[]
         {
-            new LevelSpec { Name = "City 1", Target = 75, Gems = 90, Seed = 1, DropEvery = 0.85f, FallSpeed = 1.6f, MaxChutes = 4 },
-            new LevelSpec { Name = "City 2", Target = 80, Gems = 94, Seed = 2, DropEvery = 0.75f, FallSpeed = 1.8f, MaxChutes = 4 },
+            new LevelSpec { Name = "City 1", Hint = "", Target = 60, Misses = 20, Seed = 1, Dynamite = 0, Cash = 0, DropEvery = 0.85f, FallSpeed = 1.6f, MaxChutes = 4 },
+            new LevelSpec { Name = "City 2", Hint = "", Target = 70, Misses = 15, Seed = 2, Dynamite = 0, Cash = 0, DropEvery = 0.75f, FallSpeed = 1.8f, MaxChutes = 4 },
+            new LevelSpec { Name = "City 3", Hint = "Flick dynamite up. Never let it land.", Target = 70, Misses = 18, Seed = 3, Dynamite = 12, Cash = 0, DropEvery = 0.8f, FallSpeed = 1.7f, MaxChutes = 4 },
+            new LevelSpec { Name = "City 4", Hint = "Cash counts double in either chest.", Target = 75, Misses = 10, Seed = 4, Dynamite = 10, Cash = 3, DropEvery = 0.8f, FallSpeed = 1.8f, MaxChutes = 4 },
+            new LevelSpec { Name = "City 5", Hint = "", Target = 80, Misses = 8, Seed = 5, Dynamite = 16, Cash = 4, DropEvery = 0.7f, FallSpeed = 2f, MaxChutes = 4 },
+            new LevelSpec { Name = "City 6", Hint = "", Target = 85, Misses = 8, Seed = 6, Dynamite = 20, Cash = 4, DropEvery = 0.62f, FallSpeed = 2.1f, MaxChutes = 4 },
         };
         AssetDatabase.CreateAsset(city, CityPath);
         AssetDatabase.SaveAssets();

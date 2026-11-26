@@ -15,16 +15,62 @@ MonoBehaviour:
   PlaceName: City
   Levels:
   - Name: City 1
-    Target: 75
-    Gems: 90
+    Hint: 
+    Target: 60
+    Misses: 20
     Seed: 1
+    Dynamite: 0
+    Cash: 0
     DropEvery: 0.85
     FallSpeed: 1.6
     MaxChutes: 4
   - Name: City 2
-    Target: 80
-    Gems: 94
+    Hint: 
+    Target: 70
+    Misses: 15
     Seed: 2
+    Dynamite: 0
+    Cash: 0
     DropEvery: 0.75
     FallSpeed: 1.8
+    MaxChutes: 4
+  - Name: City 3
+    Hint: Flick dynamite up. Never let it land.
+    Target: 70
+    Misses: 18
+    Seed: 3
+    Dynamite: 12
+    Cash: 0
+    DropEvery: 0.8
+    FallSpeed: 1.7
+    MaxChutes: 4
+  - Name: City 4
+    Hint: Cash counts double in either chest.
+    Target: 75
+    Misses: 10
+    Seed: 4
+    Dynamite: 10
+    Cash: 3
+    DropEvery: 0.8
+    FallSpeed: 1.8
+    MaxChutes: 4
+  - Name: City 5
+    Hint: 
+    Target: 80
+    Misses: 8
+    Seed: 5
+    Dynamite: 16
+    Cash: 4
+    DropEvery: 0.7
+    FallSpeed: 2.0
+    MaxChutes: 4
+  - Name: City 6
+    Hint: 
+    Target: 85
+    Misses: 8
+    Seed: 6
+    Dynamite: 20
+    Cash: 4
+    DropEvery: 0.62
+    FallSpeed: 2.1
     MaxChutes: 4

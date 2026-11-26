@@ -33,6 +33,7 @@ public class AlleyReactions : MonoBehaviour
     {
         rules = director.Rules;
         rules.Sorted += OnSorted;
+        rules.Missed += OnMissed;
         rules.VatFilled += OnVatFilled;
         rules.LegAdvanced += OnLegAdvanced;
         rules.CashWon += OnCashWon;
@@ -46,6 +47,7 @@ public class AlleyReactions : MonoBehaviour
     {
         if (rules == null) return;
         rules.Sorted -= OnSorted;
+        rules.Missed -= OnMissed;
         rules.VatFilled -= OnVatFilled;
         rules.LegAdvanced -= OnLegAdvanced;
         rules.CashWon -= OnCashWon;
@@ -68,6 +70,12 @@ public class AlleyReactions : MonoBehaviour
         if (raccoon == null || !raccoon.GetCurrentAnimatorStateInfo(0).IsName("Torch_Idle") || raccoon.IsInTransition(0)) return;
         raccoon.SetTrigger("onPushLight");
         PushLights++;
+    }
+
+    // Dynamite left to land goes off in the street.
+    void OnMissed(ItemKind kind)
+    {
+        if (kind == ItemKind.Bomb) Shake(0.35f);
     }
 
     void OnVatFilled(int side)
