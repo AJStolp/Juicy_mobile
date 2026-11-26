@@ -302,18 +302,48 @@ public static class AlleyBatch
         switch (step)
         {
             case 1:
+            {
                 if (UnityEngine.Time.frameCount < 10) return;
                 mapOk = true;
                 mapLog.Clear();
                 mapErrors = 0;
                 UnityEngine.Application.logMessageReceived += CountMapError;
-                MapExpect(director.UsesMap && map != null && map.Showing, "the game opens on the map");
-                MapExpect(director.Paused, "nothing falls while the map is up");
+                var title = UnityEngine.Object.FindAnyObjectByType<AlleyTitle>();
+                MapExpect(title != null && title.Showing && !map.Showing, "the game opens on the title");
+                MapExpect(director.Paused, "nothing falls behind the title");
+                AlleySceneBuilder.Capture("/tmp/juicy-title.png");
+                title.Continue();
+                MapStep(101);
+                return;
+            }
+            case 101:
+            {
+                MapExpect(map.Showing && director.Paused, "a tap on the title opens the map");
+                var settings = UnityEngine.Object.FindAnyObjectByType<AlleySettings>();
+                settings.Open();
+                MapStep(102);
+                return;
+            }
+            case 102:
+            {
+                var settings = UnityEngine.Object.FindAnyObjectByType<AlleySettings>();
+                AlleySceneBuilder.Capture("/tmp/juicy-settings.png");
+                bool sound = AudioPrefs.SoundOn;
+                bool music = AudioPrefs.MusicOn;
+                settings.ToggleSound();
+                settings.ToggleMusic();
+                MapExpect(AudioPrefs.SoundOn != sound && AudioPrefs.MusicOn != music, "settings switch sound and music");
+                settings.ToggleSound();
+                settings.ToggleMusic();
+                MapExpect(AudioPrefs.SoundOn == sound && AudioPrefs.MusicOn == music, "and switch them back");
+                settings.Close();
+                MapExpect(!settings.Showing && map.Showing, "closing settings leaves the map");
                 director.Progress.Restore(0);
                 map.SetLook(AlleyMap.Look.Board);
                 map.Show();
                 MapStep(2);
                 return;
+            }
             case 2:
                 AlleySceneBuilder.Capture("/tmp/juicy-map-board-0.png");
                 director.Progress.Restore(3);
@@ -479,7 +509,7 @@ public static class AlleyBatch
                 UnityEngine.Application.logMessageReceived -= CountMapError;
                 MapExpect(mapErrors == 0, "no errors logged during play (" + mapErrors + (mapErrors > 0 ? ", first: " + mapFirstError : "") + ")");
                 System.IO.File.WriteAllText(MapReport, (mapOk ? "PASS" : "FAIL") + " map check\n" + mapLog +
-                    "stills /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win,vault-open,vault-cracked}.png " +
+                    "stills /tmp/juicy-title.png /tmp/juicy-settings.png /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win,vault-open,vault-cracked}.png " +
                     "/tmp/juicy-reveal-{covered,half,done,smudged}.png /tmp/juicy-finale.png /tmp/juicy-vault-cracked.png\n");
                 SessionState.SetInt(MapStepKey, 90);
                 EditorApplication.isPlaying = false;
