@@ -1,0 +1,32 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f586c2502ad354ee8bc146c642e9cce7, type: 3}
+  m_Name: City
+  m_EditorClassIdentifier: Assembly-CSharp::PlaceData
+  PlaceName: City
+  Levels:
+  - Name: City 1
+    Boss: 0
+    Target: 75
+    Gems: 90
+    Seed: 1
+    DropEvery: 0.85
+    FallSpeed: 1.6
+    MaxChutes: 4
+  - Name: City 2
+    Boss: 0
+    Target: 80
+    Gems: 94
+    Seed: 2
+    DropEvery: 0.75
+    FallSpeed: 1.8
+    MaxChutes: 4
