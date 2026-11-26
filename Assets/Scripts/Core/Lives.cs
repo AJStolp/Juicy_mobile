@@ -21,6 +21,8 @@ public class Lives
 
     public int Count(long now)
     {
+        // A clock moved backward restarts the wait from now.
+        if (now < since) since = now;
         if (stored >= Max) return Max;
         long gained = Math.Max(0, now - since) / RefillSeconds;
         return (int)Math.Min(Max, stored + gained);

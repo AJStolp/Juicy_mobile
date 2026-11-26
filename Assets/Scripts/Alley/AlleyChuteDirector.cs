@@ -368,6 +368,9 @@ public class AlleyChuteDirector : MonoBehaviour
         if (autoPlay) TickBot();
         TickItems(dt);
         FlushClear();
+        // A safety net: an attempt with nothing left to fall and nothing on
+        // the street can never be decided, so it ends as a fail.
+        if (Level.Playing && !Level.TargetReached && !Level.CanDrop && live.Count == 0) Level.Exhaust();
         if (!Level.Playing) EndAttempt();
     }
 
@@ -448,6 +451,9 @@ public class AlleyChuteDirector : MonoBehaviour
         float drop = Level.Spec.FallSpeed * dt;
         for (int i = live.Count - 1; i >= 0; i--)
         {
+            // Once the attempt ends, nothing more is played this frame: what
+            // is still moving goes back to the level when the street clears.
+            if (!Level.Playing) break;
             AlleyItem item = live[i];
             switch (item.State)
             {

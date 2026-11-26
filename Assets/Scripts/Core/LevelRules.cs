@@ -224,6 +224,13 @@ public class LevelRules
         return true;
     }
 
+    // Nothing is left to play and the attempt is still undecided: it fails.
+    // A guard; the rules above should never leave an attempt here.
+    public void Exhaust()
+    {
+        if (Playing && !TargetReached) End(LevelState.Failed);
+    }
+
     // Ends a held win: the vault cracked, or the alarm tripped.
     public void Finish(bool cracked)
     {

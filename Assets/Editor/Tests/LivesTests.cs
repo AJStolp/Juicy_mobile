@@ -116,6 +116,20 @@ public class KeepGoingTests
     }
 
     [Test]
+    public void AnUndecidedAttemptWithNothingLeftFails()
+    {
+        var rules = new HeistSortRules();
+        var level = new LevelRules(rules, new LevelSpec { Target = 3, Misses = 2 });
+        while (level.Drop(out _)) { }
+        level.Exhaust();
+        Assert.AreEqual(LevelState.Failed, level.State);
+        var boss = new LevelRules(rules, new LevelSpec { Target = 1, Misses = 0 }) { HoldsWin = true };
+        rules.Catch(ItemKind.Gem, 0, 0);
+        boss.Exhaust();
+        Assert.AreEqual(LevelState.Playing, boss.State, "a vault waiting on its finale is decided there");
+    }
+
+    [Test]
     public void ATrippedAlarmCannotBeKeptGoing()
     {
         var rules = new HeistSortRules();
