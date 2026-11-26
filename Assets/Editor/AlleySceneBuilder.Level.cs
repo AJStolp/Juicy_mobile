@@ -1,7 +1,8 @@
 using UnityEditor;
 using UnityEngine;
 
-// The level's goal display and result panel.
+// The level's goal display and result panel, the city's map, and the city's
+// level asset.
 public static partial class AlleySceneBuilder
 {
     const string LevelRoot = "Assets/Levels";
@@ -36,6 +37,14 @@ public static partial class AlleySceneBuilder
         GameObject hud = new GameObject("Level_Hud");
         hud.transform.SetParent(camera.transform, false);
         hud.AddComponent<AlleyLevelHud>().Configure(director, HudPanelMaterial());
+    }
+
+    static void BuildMap(AlleyChuteDirector director)
+    {
+        Camera camera = Camera.main;
+        GameObject map = new GameObject("City_Map");
+        map.transform.SetParent(camera.transform, false);
+        map.AddComponent<AlleyMap>().Configure(director, HudPanelMaterial());
     }
 
     // Unlit and see through, tinted per quad.

@@ -57,14 +57,21 @@ public class AlleyChuteDirector : MonoBehaviour
     public VaultProgress Vault { get; private set; }
     public ClueRules Clues { get; private set; }
     public LevelRules Level { get; private set; }
+    public PlaceProgress Progress { get; private set; }
     public PlaceData Place => place;
     public int LevelIndex => levelIndex;
     public event System.Action<LevelRules> AttemptStarted;
     public event System.Action<LevelRules> AttemptEnded;
+    // True when a map is in the scene and this is not auto play: play then
+    // starts from the map, and a won level goes back to it. Set in Awake,
+    // before any Start reads it.
+    public bool UsesMap { get; private set; }
+    public event System.Action MapOpened;
     public bool AutoPlay => autoPlay;
     public float AutoMistakes { get => autoMistakes; set => autoMistakes = Mathf.Clamp01(value); }
 
-    // Paused for a bonus round: the street clears and nothing falls.
+    // Paused between attempts, on the map or in a bonus round: the street
+    // clears and nothing falls.
     public bool Paused
     {
         get => paused;
@@ -94,6 +101,8 @@ public class AlleyChuteDirector : MonoBehaviour
         Rules = new HeistSortRules();
         Vault = new VaultProgress();
         Clues = new ClueRules(Vault, System.Environment.TickCount);
+        if (place == null) throw new System.InvalidOperationException("The chute director has no place to play; rebuild the scene with Wire Gameplay");
+        Progress = new PlaceProgress(place.Count);
         view = Camera.main;
         itemTemplate.gameObject.SetActive(false);
         for (int i = 0; i < poolSize; i++)
@@ -107,16 +116,25 @@ public class AlleyChuteDirector : MonoBehaviour
 #if UNITY_EDITOR
         if (System.IO.File.Exists("/tmp/juicy-alley-bot")) autoPlay = true;
 #endif
+        UsesMap = !autoPlay && FindAnyObjectByType<AlleyMap>() != null;
         // Bot runs keep their own save and start each run fresh.
         if (autoPlay) PlayerPrefs.DeleteKey(BotSaveKey);
         HeistSave saved = HeistSave.FromJson(PlayerPrefs.GetString(CurrentSaveKey, ""));
-        if (saved != null) saved.Apply(Vault, Rules, Clues);
+        if (saved != null) saved.Apply(Vault, Rules, Clues, Progress);
         Vault.Turned += (_, __) => SaveNow();
         Vault.StageLocked += _ => SaveNow();
         Vault.RolledBack += (_, __) => SaveNow();
         Vault.Cracked += _ => SaveNow();
         Rules.GearChanged += (_, __) => SaveNow();
+        levelIndex = Progress.Next;
         BeginLevel();
+    }
+
+    // Leaves play for the map. Nothing falls until a level is picked.
+    public void OpenMap()
+    {
+        Paused = true;
+        MapOpened?.Invoke();
     }
 
     // Starts a fresh attempt at the level. A fail costs only the attempt:
@@ -137,7 +155,6 @@ public class AlleyChuteDirector : MonoBehaviour
     void BeginLevel()
     {
         if (Level != null) Level.Dispose();
-        if (place == null) throw new System.InvalidOperationException("The chute director has no place to play; rebuild the scene with Wire Gameplay");
         LevelSpec spec = place.Level(levelIndex);
         Rules.MaxChutes = Mathf.Clamp(spec.MaxChutes, 1, drops.Length);
         Level = new LevelRules(Rules, spec);
@@ -146,6 +163,7 @@ public class AlleyChuteDirector : MonoBehaviour
     void EndAttempt()
     {
         Paused = true;
+        if (Level.State == LevelState.Won) Progress.Won(levelIndex);
         SaveNow();
         AttemptEnded?.Invoke(Level);
     }
@@ -154,7 +172,7 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public void SaveNow()
     {
-        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules, Clues).ToJson());
+        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules, Clues, Progress).ToJson());
         PlayerPrefs.Save();
     }
 

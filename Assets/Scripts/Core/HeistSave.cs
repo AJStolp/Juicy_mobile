@@ -1,8 +1,8 @@
 using System;
 using UnityEngine;
 
-// What carries over between sittings: where the vault is, the cash, the gear
-// and the unfinished clue cycle. Legs, chutes, heat and streak start fresh
+// What carries over between sittings: where the vault is, the cash, the gear,
+// the unfinished clue cycle and how many of the place's levels are beaten. Legs, chutes, heat and streak start fresh
 // each sitting by design.
 [Serializable]
 public class HeistSave
@@ -16,8 +16,9 @@ public class HeistSave
     public int clueCycle;
     public int[] clueSymbols = new int[0];
     public int[] clueTiers = new int[0];
+    public int placeBeaten;
 
-    public static HeistSave Capture(VaultProgress vault, HeistSortRules rules, ClueRules clues)
+    public static HeistSave Capture(VaultProgress vault, HeistSortRules rules, ClueRules clues, PlaceProgress place)
     {
         var save = new HeistSave
         {
@@ -29,13 +30,15 @@ public class HeistSave
             clueCycle = clues.Cycle,
             clueSymbols = clues.SymbolsSnapshot(),
             clueTiers = clues.TiersSnapshot(),
+            placeBeaten = place.Beaten,
         };
         for (int i = 0; i < save.gear.Length; i++) save.gear[i] = rules.GearCount((GearKind)i);
         return save;
     }
 
-    public void Apply(VaultProgress vault, HeistSortRules rules, ClueRules clues)
+    public void Apply(VaultProgress vault, HeistSortRules rules, ClueRules clues, PlaceProgress place)
     {
+        place.Restore(placeBeaten);
         vault.Restore(heist, stage, turns);
         rules.Restore(balance, gear);
         clues.Restore(clueSeed, clueCycle, clueSymbols, clueTiers);
