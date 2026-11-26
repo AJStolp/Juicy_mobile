@@ -2,10 +2,13 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// Runs the heist sort in the alley. Items fall from the open chutes; the
-// player swipes left or right to send one into that side's color chest, or up
-// to trash it. HeistSortRules decides what each outcome is worth, and every
-// vat fill turns the vault. Vault, cash and gear are saved between sittings.
+// Runs one level of the heist sort in the alley. Gems fall from the open
+// chutes; the player swipes left or right to send one into that side's color
+// chest, or up to trash it. HeistSortRules decides what each outcome is worth,
+// and LevelRules decides when the attempt is won or failed and the order the
+// gems come in. Only gems fall:
+// the other items, the vault turning and the clue hack wait for the levels
+// that bring them back (T-026). Cash and gear are saved between sittings.
 public class AlleyChuteDirector : MonoBehaviour
 {
     // Chutes open centre first: Drop_02, Drop_03, Drop_01, then Drop_04.
@@ -27,6 +30,8 @@ public class AlleyChuteDirector : MonoBehaviour
     [SerializeField] float pickRadius = 0.12f;
     [SerializeField] float flightTime = 0.32f;
     [SerializeField] float trashTime = 0.45f;
+    [Tooltip("Sets the order the level's gems fall in, the same on every attempt.")]
+    [SerializeField] int levelSeed = LevelRules.DefaultSeed;
     [SerializeField] bool autoPlay;
     [Range(0f, 1f)] [SerializeField] float autoMistakes = 0.12f;
 
@@ -40,7 +45,6 @@ public class AlleyChuteDirector : MonoBehaviour
 
     const string SaveKey = "Juicy.HeistSave";
     const string BotSaveKey = "Juicy.HeistSave.Bot";
-    const int TurnsPerVatFill = 1;
 
     bool paused;
     bool clearQueued;
@@ -48,6 +52,9 @@ public class AlleyChuteDirector : MonoBehaviour
     public HeistSortRules Rules { get; private set; }
     public VaultProgress Vault { get; private set; }
     public ClueRules Clues { get; private set; }
+    public LevelRules Level { get; private set; }
+    public event System.Action<LevelRules> AttemptStarted;
+    public event System.Action<LevelRules> AttemptEnded;
     public bool AutoPlay => autoPlay;
     public float AutoMistakes { get => autoMistakes; set => autoMistakes = Mathf.Clamp01(value); }
 
@@ -79,9 +86,6 @@ public class AlleyChuteDirector : MonoBehaviour
         Rules = new HeistSortRules();
         Vault = new VaultProgress();
         Clues = new ClueRules(Vault, System.Environment.TickCount);
-        Rules.Busted += ClearLive;
-        Rules.Busted += Vault.Bust;
-        Rules.VatFilled += _ => Vault.Turn(TurnsPerVatFill);
         view = Camera.main;
         itemTemplate.gameObject.SetActive(false);
         for (int i = 0; i < poolSize; i++)
@@ -104,6 +108,31 @@ public class AlleyChuteDirector : MonoBehaviour
         Vault.RolledBack += (_, __) => SaveNow();
         Vault.Cracked += _ => SaveNow();
         Rules.GearChanged += (_, __) => SaveNow();
+        BeginLevel();
+    }
+
+    // Starts a fresh attempt at the level. A fail costs only the attempt:
+    // cash and gear carry over.
+    public void Retry()
+    {
+        Rules.StartAttempt();
+        BeginLevel();
+        spawnTimer = 0f;
+        Paused = false;
+        AttemptStarted?.Invoke(Level);
+    }
+
+    void BeginLevel()
+    {
+        if (Level != null) Level.Dispose();
+        Level = new LevelRules(Rules, seed: levelSeed);
+    }
+
+    void EndAttempt()
+    {
+        Paused = true;
+        SaveNow();
+        AttemptEnded?.Invoke(Level);
     }
 
     string CurrentSaveKey => autoPlay ? BotSaveKey : SaveKey;
@@ -130,25 +159,26 @@ public class AlleyChuteDirector : MonoBehaviour
         FlushClear();
         if (paused) return;
         Rules.Tick(dt);
+        Level.Tick(dt);
         TickSpawn(dt);
         TickInput();
         if (autoPlay) TickBot();
         TickItems(dt);
         FlushClear();
+        if (!Level.Playing) EndAttempt();
     }
 
     void TickSpawn(float dt)
     {
         spawnTimer += dt;
         if (spawnTimer < spawnInterval || idle.Count == 0) return;
+        if (!Level.Drop(out int colorId, out float chuteRoll)) return;
         spawnTimer = 0f;
 
         AlleyItem item = idle.Dequeue();
-        ItemKind kind = Rules.KindForRoll(Random.value);
-        int colorId = kind == ItemKind.Gem ? Random.Range(0, HeistSortRules.Sides) : 0;
-        char letter = kind == ItemKind.Letter ? Rules.PickLetter(Random.value) : '\0';
-        Transform drop = drops[ChuteOrder[Random.Range(0, Rules.Chutes)]];
-        item.Launch(kind, colorId, GemColor(colorId), letter, drop.position);
+        int chute = Mathf.Min((int)(chuteRoll * Rules.Chutes), Rules.Chutes - 1);
+        Transform drop = drops[ChuteOrder[chute]];
+        item.Launch(ItemKind.Gem, colorId, GemColor(colorId), '\0', drop.position);
         live.Add(item);
         Spawned++;
     }
@@ -252,9 +282,9 @@ public class AlleyChuteDirector : MonoBehaviour
         idle.Enqueue(item);
     }
 
-    // A bust or a bonus round clears everything still in the air. Both can
-    // fire from inside TickItems' loop over live items, so the clear waits
-    // until that loop is done.
+    // The end of an attempt clears everything still in the air. It can come
+    // from inside TickItems' loop over live items, so the clear waits until
+    // that loop is done.
     void ClearLive()
     {
         clearQueued = true;
