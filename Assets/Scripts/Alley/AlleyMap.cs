@@ -35,22 +35,25 @@ public class AlleyMap : MonoBehaviour
     [SerializeField] AlleyChuteDirector director;
     [SerializeField] Material panelMaterial;
     [SerializeField] Look look = Look.Board;
+    [SerializeField] AlleySettings settings;
 
     CameraOverlay overlay;
     GameObject content;
     Renderer[] stopHits;
     Renderer vaultHit;
     Renderer switchHit;
+    Renderer settingsHit;
     Transform pulse;
     Vector3 pulseBase;
     float shownAt;
 
     public bool Showing => content != null && content.activeSelf;
 
-    public void Configure(AlleyChuteDirector chute, Material material)
+    public void Configure(AlleyChuteDirector chute, Material material, AlleySettings settingsPanel)
     {
         director = chute;
         panelMaterial = material;
+        settings = settingsPanel;
     }
 
     void Start()
@@ -68,7 +71,8 @@ public class AlleyMap : MonoBehaviour
         transform.localRotation = Quaternion.identity;
         director.MapOpened += Show;
         director.AttemptStarted += OnAttemptStarted;
-        director.OpenMap();
+        // With a title, the title opens the map; otherwise the map is first.
+        if (!director.UsesTitle) director.OpenMap();
     }
 
     void OnDestroy()
@@ -119,10 +123,17 @@ public class AlleyMap : MonoBehaviour
     {
         if (!Showing) return;
         if (pulse != null) pulse.localScale = pulseBase * (1f + 0.06f * Mathf.Sin(Time.unscaledTime * 6f));
-        if (Time.unscaledTime < shownAt + TapGuard) return;
+        // Settings sit on top and take the taps while open.
+        if (Time.unscaledTime < shownAt + TapGuard || (settings != null && settings.Showing)) return;
         Pointer pointer = Pointer.current;
         if (pointer == null || !pointer.press.wasReleasedThisFrame) return;
         Vector2 tap = pointer.position.ReadValue();
+        if (settingsHit != null && overlay.ScreenRect(settingsHit).Contains(tap))
+        {
+            JuicyAudioHooks.Tap();
+            settings.Open();
+            return;
+        }
         if (overlay.ScreenRect(switchHit).Contains(tap))
         {
             JuicyAudioHooks.Tap();
@@ -309,8 +320,13 @@ public class AlleyMap : MonoBehaviour
     // Prototype only: switches between the two looks.
     void BuildSwitch(Transform root)
     {
-        switchHit = overlay.Quad(root, "Switch", new Vector2(0.5f, 0.045f), new Vector2(0.8f, 0.045f), new Color(0f, 0f, 0f, 0.7f), 0.001f);
-        TextMeshPro label = overlay.Text(root, "Switch_Label", new Vector2(0.5f, 0.045f), new Vector2(0.76f, 0.028f), Color.white);
-        label.text = "LOOK: " + (look == Look.Board ? "CRIME BOARD" : "STREETS") + "  (TAP TO SWITCH)";
+        switchHit = overlay.Quad(root, "Switch", new Vector2(0.36f, 0.045f), new Vector2(0.62f, 0.045f), new Color(0f, 0f, 0f, 0.7f), 0.001f);
+        TextMeshPro label = overlay.Text(root, "Switch_Label", new Vector2(0.36f, 0.045f), new Vector2(0.58f, 0.024f), Color.white);
+        label.text = "LOOK: " + (look == Look.Board ? "BOARD" : "STREETS") + " (TAP)";
+        settingsHit = null;
+        if (settings == null) return;
+        settingsHit = overlay.Quad(root, "Settings", new Vector2(0.835f, 0.045f), new Vector2(0.27f, 0.045f), new Color(0f, 0f, 0f, 0.7f), 0.001f);
+        TextMeshPro gear = overlay.Text(root, "Settings_Label", new Vector2(0.835f, 0.045f), new Vector2(0.24f, 0.024f), Color.white);
+        gear.text = "SETTINGS";
     }
 }

@@ -75,6 +75,9 @@ public class AlleyChuteDirector : MonoBehaviour
     // starts from the map, and a won level goes back to it. Set in Awake,
     // before any Start reads it.
     public bool UsesMap { get; private set; }
+    // True when a title is in the scene and the map is used: play opens on
+    // the title, which goes on to the map.
+    public bool UsesTitle { get; private set; }
     public event System.Action MapOpened;
     // True when a clue reveal is in the scene and this is not auto play: a
     // won level's clue is scratched off before going back to the map.
@@ -130,6 +133,7 @@ public class AlleyChuteDirector : MonoBehaviour
         if (System.IO.File.Exists("/tmp/juicy-alley-bot")) autoPlay = true;
 #endif
         UsesMap = !autoPlay && FindAnyObjectByType<AlleyMap>() != null;
+        UsesTitle = UsesMap && FindAnyObjectByType<AlleyTitle>() != null;
         UsesReveal = !autoPlay && FindAnyObjectByType<AlleyClueReveal>() != null;
         // Bot runs keep their own save and start each run fresh.
         if (autoPlay) PlayerPrefs.DeleteKey(BotSaveKey);

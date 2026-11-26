@@ -1,8 +1,8 @@
 using UnityEditor;
 using UnityEngine;
 
-// The level's goal display and result panel, the clue reveal, the city's map,
-// and the city's level asset.
+// The level's goal display and result panel, the clue reveal, the title, the
+// city's map and its settings, and the city's level asset.
 public static partial class AlleySceneBuilder
 {
     const string LevelRoot = "Assets/Levels";
@@ -51,9 +51,16 @@ public static partial class AlleySceneBuilder
     static void BuildMap(AlleyChuteDirector director)
     {
         Camera camera = Camera.main;
+        GameObject settings = new GameObject("Game_Settings");
+        settings.transform.SetParent(camera.transform, false);
+        AlleySettings panel = settings.AddComponent<AlleySettings>();
+        panel.Configure(HudPanelMaterial());
         GameObject map = new GameObject("City_Map");
         map.transform.SetParent(camera.transform, false);
-        map.AddComponent<AlleyMap>().Configure(director, HudPanelMaterial());
+        map.AddComponent<AlleyMap>().Configure(director, HudPanelMaterial(), panel);
+        GameObject title = new GameObject("Game_Title");
+        title.transform.SetParent(camera.transform, false);
+        title.AddComponent<AlleyTitle>().Configure(director, HudPanelMaterial());
     }
 
     // Unlit and see through, tinted per quad.
