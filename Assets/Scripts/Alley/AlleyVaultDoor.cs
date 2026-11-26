@@ -41,8 +41,6 @@ public class AlleyVaultDoor : MonoBehaviour
     bool cracking;
     bool rested;
 
-    public int Pops { get; private set; }
-    public int Cracks { get; private set; }
     public Vector3 Focus => wheel != null ? wheel.position : transform.position;
 
     public void Configure(AlleyChuteDirector chute, Transform swingDoor, Transform[] slidingBolts, Vector3[] slide, Transform gearLock,
@@ -173,11 +171,7 @@ public class AlleyVaultDoor : MonoBehaviour
         if (cracking) return;
         shown[stage] = 1f;
         JuicyAudioHooks.Vault();
-        if (stage < Bolts)
-        {
-            popped[stage] = true;
-            Pops++;
-        }
+        if (stage < Bolts) popped[stage] = true;
         if (cameraRig != null)
         {
             cameraRig.Push(Focus, 0.18f, 1.1f);
@@ -185,11 +179,7 @@ public class AlleyVaultDoor : MonoBehaviour
         }
     }
 
-    void OnCracked()
-    {
-        Cracks++;
-        StartCoroutine(Crack());
-    }
+    void OnCracked() => StartCoroutine(Crack());
 
     IEnumerator Crack()
     {
