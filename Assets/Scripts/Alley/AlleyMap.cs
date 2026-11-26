@@ -9,7 +9,7 @@ using UnityEngine.InputSystem;
 //
 // Prototype for T-035: two looks, switched by the bar along the bottom.
 //   Board:   the crime board. Stops are photos pinned to cork and joined by
-//            red string; a beaten stop shows its clue (T-036 fills these in).
+//            red string; a beaten stop's photo shows the clue found there.
 //   Streets: a night street map with the stops as gem shaped pins on a route.
 public class AlleyMap : MonoBehaviour
 {
@@ -61,7 +61,7 @@ public class AlleyMap : MonoBehaviour
             return;
         }
         Camera view = Camera.main;
-        overlay = new CameraOverlay(view, panelMaterial, Distance);
+        overlay = new CameraOverlay(view, panelMaterial, Distance, CameraOverlay.LayerMap);
         transform.SetParent(view.transform, false);
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
@@ -178,8 +178,16 @@ public class AlleyMap : MonoBehaviour
         overlay.Quad(root, "Pin_" + index, PinAt(index), new Vector2(0.03f, 0.016f), new Color(0.9f, 0.1f, 0.1f), 0.0005f);
 
         TextMeshPro big = overlay.Text(root, "Mark_" + index, at + new Vector2(0f, 0.012f), new Vector2(0.24f, 0.05f),
-            state == StopState.Beaten ? Neon : state == StopState.Open ? Ink : new Color(0.7f, 0.7f, 0.72f));
-        big.text = state == StopState.Beaten ? "CLUE " + (index + 1) : state == StopState.Open ? "PLAY" : "?";
+            state == StopState.Open ? Ink : new Color(0.7f, 0.7f, 0.72f));
+        // Locked reads as a word: "?" is one of the clue symbols.
+        big.text = state == StopState.Open ? "PLAY" : "LOCKED";
+        // A beaten level's photo shows the clue found there (T-036).
+        if (state == StopState.Beaten && director.CaseFile.Found(index))
+        {
+            Clue clue = director.CaseFile.ClueAt(index);
+            big.text = AlleyHack.Glyphs[clue.Symbol];
+            big.color = AlleyHack.SymbolColors[clue.Symbol];
+        }
         if (state == StopState.Open)
         {
             big.outlineWidth = 0f;

@@ -5,6 +5,8 @@ using UnityEngine;
 public class PlaceData : ScriptableObject
 {
     public string PlaceName = "City";
+    [Tooltip("Sets which clue symbol each level holds.")]
+    public int ClueSeed = 7;
     public LevelSpec[] Levels = { new LevelSpec() };
 
     public int Count => Levels.Length;

@@ -16,13 +16,19 @@ public class HeistSaveTests
         var place = new PlaceProgress(6);
         place.Won(0);
         place.Won(1);
-        string json = HeistSave.Capture(vault, rules, new ClueRules(vault, 1), place).ToJson();
+        var caseFile = new CaseFile(6, 7);
+        caseFile.Record(1, 2);
+        string json = HeistSave.Capture(vault, rules, new ClueRules(vault, 1), place, caseFile).ToJson();
 
         var vault2 = new VaultProgress { TurnsByHeist = new[] { 5 } };
         var rules2 = new HeistSortRules();
         var place2 = new PlaceProgress(6);
-        HeistSave.FromJson(json).Apply(vault2, rules2, new ClueRules(vault2, 2), place2);
+        var caseFile2 = new CaseFile(6, 7);
+        HeistSave.FromJson(json).Apply(vault2, rules2, new ClueRules(vault2, 2), place2, caseFile2);
         Assert.AreEqual(2, place2.Beaten);
+        Assert.IsFalse(caseFile2.Found(0));
+        Assert.IsTrue(caseFile2.Found(1));
+        Assert.AreEqual(2, caseFile2.ClueAt(1).Tier);
         Assert.AreEqual(2, vault2.Heist);
         Assert.AreEqual(2, vault2.Stage);
         Assert.AreEqual(3, vault2.Turns);

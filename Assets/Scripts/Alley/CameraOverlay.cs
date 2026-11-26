@@ -6,17 +6,25 @@ using UnityEngine;
 // in viewport terms: (0, 0) bottom left, (1, 1) top right. `back` pushes a
 // piece further from the camera and sets its draw order: see-through pieces
 // sort by distance to their centre, so a big backdrop would otherwise cover
-// small pieces near the screen's edges. Text always draws on top.
+// small pieces near the screen's edges. Text draws on top of its own screen's
+// quads. Each screen has its own band of draw orders (`layer`), so a screen
+// in front (the clue reveal) always covers the ones behind (the map, the HUD).
 public class CameraOverlay
 {
     readonly Camera view;
     readonly Material material;
     readonly MaterialPropertyBlock block = new MaterialPropertyBlock();
+    readonly int baseOrder;
 
     public float Distance { get; }
 
-    public CameraOverlay(Camera camera, Material panelMaterial, float distance)
+    public const int LayerHud = 0;
+    public const int LayerMap = 1;
+    public const int LayerReveal = 2;
+
+    public CameraOverlay(Camera camera, Material panelMaterial, float distance, int layer)
     {
+        baseOrder = layer * LayerSpan;
         view = camera;
         material = panelMaterial;
         Distance = distance;
@@ -32,9 +40,13 @@ public class CameraOverlay
     }
 
     const int TextOrder = 100;
+    const int LayerSpan = 200;
 
     // Nearer pieces draw later: back 0.01 and further is 0, back 0 is 50.
-    static int OrderFor(float back) => Mathf.Clamp(Mathf.RoundToInt((0.01f - back) * 5000f), 0, TextOrder - 1);
+    int OrderFor(float back) => baseOrder + Mathf.Clamp(Mathf.RoundToInt((0.01f - back) * 5000f), 0, TextOrder - 1);
+
+    // For a piece of text that must sit under this screen's quads.
+    public int Order(float back) => OrderFor(back);
 
     public Vector3 Place(Vector2 viewport, float back = 0f)
     {
@@ -58,7 +70,7 @@ public class CameraOverlay
         text.color = color;
         text.outlineWidth = 0.2f;
         text.outlineColor = new Color32(0, 0, 0, 255);
-        text.sortingOrder = TextOrder;
+        text.sortingOrder = baseOrder + TextOrder;
         return text;
     }
 
