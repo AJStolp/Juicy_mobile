@@ -2,11 +2,12 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// The level's goal and result, drawn as text just in front of the camera so
-// every capture of the camera includes it. Top: gems sorted against the
-// target, and how many more gems the player can lose and still win. When an
-// attempt ends: won with the misses to spare, or how many gems short, and a
-// tap to try again.
+// The level's goal and result, drawn just in front of the camera
+// (CameraOverlay). Top: gems sorted against the target, and how many more gems
+// the player can lose and still win. When an attempt ends: won with the misses
+// to spare, or how many gems short. A tap after a win goes back to the map
+// when there is one; a tap after a fail tries the level again. Hidden while
+// the map is up.
 public class AlleyLevelHud : MonoBehaviour
 {
     static readonly Color Neon = new Color(1f, 0.85f, 0.25f);
@@ -18,7 +19,8 @@ public class AlleyLevelHud : MonoBehaviour
 
     const float Distance = 0.4f;
 
-    Camera view;
+    CameraOverlay overlay;
+    GameObject content;
     TextMeshPro gemsText;
     TextMeshPro limitText;
     GameObject panel;
@@ -28,7 +30,6 @@ public class AlleyLevelHud : MonoBehaviour
     TextMeshPro bannerText;
     TextMeshPro hintText;
     float bannerUntil;
-    MaterialPropertyBlock block;
     float punch;
     int lastSorted;
     float shownAt;
@@ -43,37 +44,44 @@ public class AlleyLevelHud : MonoBehaviour
 
     void Start()
     {
-        view = Camera.main;
-        block = new MaterialPropertyBlock();
+        Camera view = Camera.main;
+        overlay = new CameraOverlay(view, panelMaterial, Distance);
         transform.SetParent(view.transform, false);
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
+        content = new GameObject("Content");
+        content.transform.SetParent(transform, false);
+        Transform root = content.transform;
 
-        gemsText = Text("Gems", new Vector2(0.5f, 0.935f), new Vector2(0.9f, 0.06f), Neon);
-        limitText = Text("Limit", new Vector2(0.5f, 0.885f), new Vector2(0.9f, 0.04f), Color.white);
+        gemsText = overlay.Text(root, "Gems", new Vector2(0.5f, 0.935f), new Vector2(0.9f, 0.06f), Neon);
+        limitText = overlay.Text(root, "Limit", new Vector2(0.5f, 0.885f), new Vector2(0.9f, 0.04f), Color.white);
 
         panel = new GameObject("Result_Panel");
-        panel.transform.SetParent(transform, false);
-        Quad(panel.transform, "Back", new Vector2(0.5f, 0.57f), new Vector2(0.86f, 0.24f), new Color(0.02f, 0.02f, 0.05f, 0.82f), 0.002f);
-        titleText = Text("Title", new Vector2(0.5f, 0.64f), new Vector2(0.8f, 0.07f), Win, panel.transform);
-        detailText = Text("Detail", new Vector2(0.5f, 0.575f), new Vector2(0.8f, 0.04f), Color.white, panel.transform);
-        retryText = Text("Retry", new Vector2(0.5f, 0.505f), new Vector2(0.8f, 0.035f), Neon, panel.transform);
-        retryText.text = "TAP TO TRY AGAIN";
+        panel.transform.SetParent(root, false);
+        overlay.Quad(panel.transform, "Back", new Vector2(0.5f, 0.57f), new Vector2(0.86f, 0.24f), new Color(0.02f, 0.02f, 0.05f, 0.82f), 0.002f);
+        titleText = overlay.Text(panel.transform, "Title", new Vector2(0.5f, 0.64f), new Vector2(0.8f, 0.07f), Win);
+        detailText = overlay.Text(panel.transform, "Detail", new Vector2(0.5f, 0.575f), new Vector2(0.8f, 0.04f), Color.white);
+        retryText = overlay.Text(panel.transform, "Retry", new Vector2(0.5f, 0.505f), new Vector2(0.8f, 0.035f), Neon);
         panel.SetActive(false);
 
         // The level's name, and its hint when it brings in something new.
-        bannerText = Text("Banner", new Vector2(0.5f, 0.66f), new Vector2(0.8f, 0.06f), Neon);
-        hintText = Text("Hint", new Vector2(0.5f, 0.6f), new Vector2(0.86f, 0.04f), Color.white);
+        bannerText = overlay.Text(root, "Banner", new Vector2(0.5f, 0.66f), new Vector2(0.8f, 0.06f), Neon);
+        hintText = overlay.Text(root, "Hint", new Vector2(0.5f, 0.6f), new Vector2(0.86f, 0.04f), Color.white);
 
         director.AttemptEnded += ShowResult;
         director.AttemptStarted += ShowBanner;
+        director.MapOpened += Hide;
         ShowBanner(director.Level);
+        if (director.UsesMap) Hide();
     }
+
+    void Hide() => content.SetActive(false);
 
     const float BannerSeconds = 3f;
 
     void ShowBanner(LevelRules level)
     {
+        content.SetActive(true);
         panel.SetActive(false);
         if (level == null) return;
         bannerText.text = level.Spec.Name.ToUpperInvariant();
@@ -86,12 +94,13 @@ public class AlleyLevelHud : MonoBehaviour
         if (director == null) return;
         director.AttemptEnded -= ShowResult;
         director.AttemptStarted -= ShowBanner;
+        director.MapOpened -= Hide;
     }
 
     void Update()
     {
         LevelRules level = director.Level;
-        if (level == null) return;
+        if (level == null || !content.activeSelf) return;
         if (level.Sorted != lastSorted)
         {
             if (level.Sorted > lastSorted) punch = 1f;
@@ -116,70 +125,25 @@ public class AlleyLevelHud : MonoBehaviour
         detailText.text = won
             ? level.MissesLeft + (level.MissesLeft == 1 ? " MISS TO SPARE" : " MISSES TO SPARE")
             : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
+        retryText.text = won && director.UsesMap ? "TAP TO CONTINUE" : "TAP TO TRY AGAIN";
         panel.SetActive(true);
         shownAt = Time.unscaledTime;
     }
 
-    // A tap anywhere tries the level again.
+    // A tap anywhere: back to the map after a win, or try again after a fail.
     void TickRetry()
     {
         // The swipe that ended the attempt must not also start the next one.
         if (director.AutoPlay || Time.unscaledTime < shownAt + 0.6f) return;
         Pointer pointer = Pointer.current;
         if (pointer == null || !pointer.press.wasReleasedThisFrame) return;
-        director.Retry();
+        Continue();
     }
 
-    // Size of the view at the HUD's distance, in metres. The game is portrait,
-    // so the layout never takes a wider aspect than 9:16 (a batch run's screen
-    // is landscape even though its captures are portrait).
-    Vector2 ViewSize()
+    public void Continue()
     {
-        float height = 2f * Distance * Mathf.Tan(view.fieldOfView * 0.5f * Mathf.Deg2Rad);
-        return new Vector2(height * Mathf.Min(view.aspect, 9f / 16f), height);
-    }
-
-    Vector3 Place(Vector2 viewport, float back)
-    {
-        Vector2 size = ViewSize();
-        return new Vector3((viewport.x - 0.5f) * size.x, (viewport.y - 0.5f) * size.y, Distance + back);
-    }
-
-    TextMeshPro Text(string name, Vector2 viewport, Vector2 extent, Color color, Transform parent = null)
-    {
-        var go = new GameObject(name);
-        go.transform.SetParent(parent != null ? parent : transform, false);
-        go.transform.localPosition = Place(viewport, 0f);
-        TextMeshPro text = go.AddComponent<TextMeshPro>();
-        Vector2 size = ViewSize();
-        text.rectTransform.sizeDelta = new Vector2(extent.x * size.x, extent.y * size.y);
-        text.enableAutoSizing = true;
-        text.fontSizeMin = 0.01f;
-        text.fontSizeMax = 4f;
-        text.fontStyle = FontStyles.Bold;
-        text.alignment = TextAlignmentOptions.Center;
-        text.color = color;
-        text.outlineWidth = 0.2f;
-        text.outlineColor = new Color32(0, 0, 0, 255);
-        text.sortingOrder = 10;
-        return text;
-    }
-
-    Renderer Quad(Transform parent, string name, Vector2 viewport, Vector2 extent, Color color, float back)
-    {
-        GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
-        Destroy(quad.GetComponent<Collider>());
-        quad.name = name;
-        quad.transform.SetParent(parent, false);
-        quad.transform.localPosition = Place(viewport, back);
-        Vector2 size = ViewSize();
-        quad.transform.localScale = new Vector3(extent.x * size.x, extent.y * size.y, 1f);
-        Renderer renderer = quad.GetComponent<Renderer>();
-        renderer.sharedMaterial = panelMaterial;
-        renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
-        renderer.receiveShadows = false;
-        block.SetColor("_BaseColor", color);
-        renderer.SetPropertyBlock(block);
-        return renderer;
+        if (!ShowingResult) return;
+        if (director.Level.State == LevelState.Won && director.UsesMap) director.OpenMap();
+        else director.Retry();
     }
 }

@@ -683,7 +683,7 @@ public static partial class AlleySceneBuilder
     {
         Transform framing = GameObject.Find("Alley_Framing").transform;
         Reparent("Heavy_Crates", framing);
-        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign", "Vault_Keypad", "Level_Hud" };
+        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign", "Vault_Keypad", "Level_Hud", "City_Map" };
         for (int i = 0; i < retired.Length; i++)
         {
             // Includes inactive objects, such as the word sign a level turns off.
@@ -724,6 +724,7 @@ public static partial class AlleySceneBuilder
 
         BuildScoreReadout(director);
         BuildLevelHud(director);
+        BuildMap(director);
         template.gameObject.SetActive(false);
         EditorUtility.SetDirty(directorObject);
 

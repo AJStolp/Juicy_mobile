@@ -136,7 +136,7 @@ public static class AlleyBatch
     const string SaveKey = "Juicy.HeistSave";
     const string SaveCheckReport = "/tmp/juicy-save-check.txt";
     const string Planted = "{\"heist\":1,\"stage\":5,\"turns\":4,\"balance\":54321.0,\"gear\":[2,0,1,1]," +
-        "\"clueSeed\":77,\"clueCycle\":3,\"clueSymbols\":[6,2],\"clueTiers\":[3,0]}";
+        "\"clueSeed\":77,\"clueCycle\":3,\"clueSymbols\":[6,2],\"clueTiers\":[3,0],\"placeBeaten\":2}";
 
     public static void SaveCheck()
     {
@@ -184,13 +184,15 @@ public static class AlleyBatch
             bool ok = vault.Heist == 1 && vault.Stage == 5 && vault.Turns == 4 && rules.Balance == 54321d &&
                 rules.GearCount(GearKind.Dynamite) == 2 && rules.GearCount(GearKind.Drill) == 1 && locked == 5 &&
                 clues.Count == 2 && clues.Clues[0].Symbol == 6 && clues.Clues[0].Tier == 3 &&
-                clues.Clues[1].Symbol == 2 && clues.Clues[1].Tier == 0 && clues.Seed == 77 && clues.Cycle == 3 && !clues.HackDue;
+                clues.Clues[1].Symbol == 2 && clues.Clues[1].Tier == 0 && clues.Seed == 77 && clues.Cycle == 3 && !clues.HackDue &&
+                director.Progress.Beaten == 2;
             System.IO.File.WriteAllText(SaveCheckReport, (ok ? "PASS" : "FAIL") +
                 " heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage +
                 " balance " + rules.Balance + " dynamite " + rules.GearCount(GearKind.Dynamite) + " drill " + rules.GearCount(GearKind.Drill) +
                 " bribe " + rules.GearCount(GearKind.Bribe) + " stages shown locked " + locked +
                 " clues restored " + clues.Count + "/" + clues.CluesNeeded + " symbols " + string.Join(",", clues.SymbolsSnapshot()) +
-                " tiers " + string.Join(",", clues.TiersSnapshot()) + " cycle " + clues.Cycle + " seed " + clues.Seed + "\n");
+                " tiers " + string.Join(",", clues.TiersSnapshot()) + " cycle " + clues.Cycle + " seed " + clues.Seed +
+                " city levels beaten " + director.Progress.Beaten + "\n");
             SessionState.SetInt("JuicySaveCheck", 2);
             EditorApplication.isPlaying = false;
             return;
@@ -306,6 +308,166 @@ public static class AlleyBatch
             System.IO.File.Delete("/tmp/juicy-alley-bot");
             bool passed = System.IO.File.Exists(folder + ".txt") && System.IO.File.ReadAllText(folder + ".txt").StartsWith("PASS");
             if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(passed ? 0 : 1);
+        }
+    }
+
+    // Plays the map through on the real save (backed up and put back):
+    // stills of both looks with nothing and three levels beaten, a locked stop
+    // refusing a tap, an open stop starting its level, a forced win, and the
+    // map coming back with the next stop open and the save holding it.
+    // Stills in /tmp/juicy-map-*.png, result in /tmp/juicy-map.txt (PASS or
+    // FAIL first).
+    //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.MapCheck   (no -quit)
+    const string MapStepKey = "JuicyMapCheck";
+    const string MapReport = "/tmp/juicy-map.txt";
+    static int mapWait;
+    static readonly System.Text.StringBuilder mapLog = new System.Text.StringBuilder();
+    static bool mapOk;
+
+    public static void MapCheck()
+    {
+        OpenAlley();
+        System.IO.File.Delete("/tmp/juicy-alley-bot");
+        System.IO.File.Delete(MapReport);
+        SessionState.SetString("JuicyMapBackup", UnityEngine.PlayerPrefs.GetString(SaveKey, ""));
+        UnityEngine.PlayerPrefs.DeleteKey(SaveKey);
+        UnityEngine.PlayerPrefs.Save();
+        SessionState.SetInt(MapStepKey, 1);
+        EditorApplication.update += MapCheckTick;
+        EditorApplication.isPlaying = true;
+    }
+
+    [InitializeOnLoadMethod]
+    static void ResumeMapCheck()
+    {
+        if (SessionState.GetInt(MapStepKey, 0) != 0) EditorApplication.update += MapCheckTick;
+    }
+
+    static void MapStep(int next, int waitFrames = 3)
+    {
+        SessionState.SetInt(MapStepKey, next);
+        mapWait = UnityEngine.Time.frameCount + waitFrames;
+    }
+
+    static void MapExpect(bool condition, string what)
+    {
+        mapLog.AppendLine((condition ? "ok   " : "FAIL ") + what);
+        if (!condition) mapOk = false;
+    }
+
+    static void MapCheckTick()
+    {
+        int step = SessionState.GetInt(MapStepKey, 0);
+        if (step == 0) return;
+        if (step < 90 && (!EditorApplication.isPlaying || UnityEngine.Time.frameCount < mapWait)) return;
+        var director = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>() : null;
+        var map = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyMap>() : null;
+        var hud = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyLevelHud>() : null;
+        // Anything missing or throwing ends the check as a FAIL, so play
+        // mode stops and the real save is always put back.
+        if (step < 90 && (director == null || map == null || hud == null))
+        {
+            if (UnityEngine.Time.frameCount < 10) return;
+            MapAbort("the director, map or HUD is missing from the scene");
+            return;
+        }
+        try
+        {
+            MapCheckStep(step, director, map, hud);
+        }
+        catch (System.Exception error)
+        {
+            MapAbort(error.ToString());
+        }
+    }
+
+    static void MapAbort(string why)
+    {
+        System.IO.File.WriteAllText(MapReport, "FAIL map check\n" + mapLog + "stopped: " + why + "\n");
+        SessionState.SetInt(MapStepKey, 90);
+        if (EditorApplication.isPlaying) EditorApplication.isPlaying = false;
+    }
+
+    static void MapCheckStep(int step, AlleyChuteDirector director, AlleyMap map, AlleyLevelHud hud)
+    {
+        switch (step)
+        {
+            case 1:
+                if (UnityEngine.Time.frameCount < 10) return;
+                mapOk = true;
+                mapLog.Clear();
+                MapExpect(director.UsesMap && map != null && map.Showing, "the game opens on the map");
+                MapExpect(director.Paused, "nothing falls while the map is up");
+                director.Progress.Restore(0);
+                map.SetLook(AlleyMap.Look.Board);
+                map.Show();
+                MapStep(2);
+                return;
+            case 2:
+                AlleySceneBuilder.Capture("/tmp/juicy-map-board-0.png");
+                director.Progress.Restore(3);
+                map.Show();
+                MapStep(3);
+                return;
+            case 3:
+                AlleySceneBuilder.Capture("/tmp/juicy-map-board-3.png");
+                director.Progress.Restore(0);
+                map.SetLook(AlleyMap.Look.Streets);
+                map.Show();
+                MapStep(4);
+                return;
+            case 4:
+                AlleySceneBuilder.Capture("/tmp/juicy-map-streets-0.png");
+                director.Progress.Restore(3);
+                map.Show();
+                MapStep(5);
+                return;
+            case 5:
+                AlleySceneBuilder.Capture("/tmp/juicy-map-streets-3.png");
+                map.SetLook(AlleyMap.Look.Board);
+                director.Progress.Restore(2);
+                map.Show();
+                MapExpect(!map.Choose(4), "a locked stop (City 5) does not start");
+                MapExpect(map.Showing && director.Paused, "the map stays up after a locked tap");
+                MapExpect(map.Choose(2), "the open stop (City 3) starts");
+                MapExpect(!map.Showing && !director.Paused && director.LevelIndex == 2, "City 3 is playing with the map gone");
+                MapStep(6, 40);
+                return;
+            case 6:
+                AlleySceneBuilder.Capture("/tmp/juicy-map-playing.png");
+                int target = director.Level.Target;
+                for (int i = 0; i < target && director.Level.Playing; i++) director.Rules.Catch(ItemKind.Gem, i % 2, i % 2);
+                MapStep(7, 20);
+                return;
+            case 7:
+                MapExpect(hud.ShowingResult && director.Level.State == LevelState.Won, "the win panel shows");
+                AlleySceneBuilder.Capture("/tmp/juicy-map-won.png");
+                MapExpect(director.Progress.Beaten == 3, "winning City 3 beats it (3 beaten)");
+                hud.Continue();
+                MapStep(8);
+                return;
+            case 8:
+                AlleySceneBuilder.Capture("/tmp/juicy-map-after-win.png");
+                MapExpect(map.Showing && director.Paused, "a tap after the win goes back to the map");
+                MapExpect(director.Progress.IsOpen(3) && !director.Progress.IsOpen(4), "City 4 is open and City 5 still locked");
+                var saved = HeistSave.FromJson(UnityEngine.PlayerPrefs.GetString(SaveKey, ""));
+                MapExpect(saved != null && saved.placeBeaten == 3, "the save holds 3 beaten");
+                System.IO.File.WriteAllText(MapReport, (mapOk ? "PASS" : "FAIL") + " map check\n" + mapLog +
+                    "stills /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win}.png\n");
+                SessionState.SetInt(MapStepKey, 90);
+                EditorApplication.isPlaying = false;
+                return;
+            case 90:
+                if (EditorApplication.isPlaying) return;
+                SessionState.SetInt(MapStepKey, 0);
+                EditorApplication.update -= MapCheckTick;
+                string backup = SessionState.GetString("JuicyMapBackup", "");
+                if (backup.Length > 0) UnityEngine.PlayerPrefs.SetString(SaveKey, backup);
+                else UnityEngine.PlayerPrefs.DeleteKey(SaveKey);
+                UnityEngine.PlayerPrefs.Save();
+                bool passed = System.IO.File.Exists(MapReport) && System.IO.File.ReadAllText(MapReport).StartsWith("PASS");
+                if (UnityEngine.Application.isBatchMode) EditorApplication.Exit(passed ? 0 : 1);
+                return;
         }
     }
 
