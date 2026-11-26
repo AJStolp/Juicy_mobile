@@ -903,10 +903,13 @@ public static partial class AlleySceneBuilder
     static void BuildScoreReadout(AlleyChuteDirector director)
     {
         GameObject timer = GameObject.Find("Vault_Score_Counter");
-        Bounds b;
-        if (!TryBounds(timer, out b)) return;
+        if (timer == null) return;
+        // The old readout goes first: measured with it, the timer's bounds
+        // grew forward and every rebuild nudged the readout (T-049).
         Transform old = timer.transform.Find("Score_Readout");
         if (old != null) Object.DestroyImmediate(old.gameObject);
+        Bounds b;
+        if (!TryBounds(timer, out b)) return;
 
         Vector2 size = new Vector2(b.size.x * 0.5f, b.size.y * 0.36f);
         GameObject root = new GameObject("Score_Readout");
