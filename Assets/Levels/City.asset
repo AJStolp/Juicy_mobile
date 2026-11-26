@@ -79,10 +79,10 @@ MonoBehaviour:
     Name: The Vault
     Hint: Sort to turn the door, then crack it.
     Target: 90
-    Misses: 10
+    Misses: 12
     Seed: 7
     Dynamite: 22
     Cash: 5
-    DropEvery: 0.62
-    FallSpeed: 2.1
+    DropEvery: 0.58
+    FallSpeed: 2.2
     MaxChutes: 4

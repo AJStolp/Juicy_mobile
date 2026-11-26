@@ -6,8 +6,10 @@ using UnityEngine.InputSystem;
 // from the open chutes; the player swipes left or right to send one into that
 // side's color chest, or up to flick it away. HeistSortRules decides what each
 // outcome is worth, and LevelRules decides the order things fall in and when
-// the attempt is won or failed. Letters, the vault turning and the clue hack
-// wait for the boss (T-026). Cash and gear are saved between sittings.
+// the attempt is won or failed. After the city's six levels it plays the
+// vault, the boss: its sort turns the vault door, and the keypad finale
+// (AlleyHack) takes the city's clues as the code. Cash, gear, progress and
+// clues are saved between sittings.
 public class AlleyChuteDirector : MonoBehaviour
 {
     // Chutes open centre first: Drop_02, Drop_03, Drop_01, then Drop_04.
@@ -191,6 +193,9 @@ public class AlleyChuteDirector : MonoBehaviour
     void Restart()
     {
         Rules.StartAttempt();
+        // Every attempt starts on a fresh vault door, so a cracked or half
+        // turned one never carries into the next play.
+        if (!IsBoss) Vault.Reset(1);
         BeginLevel();
         spawnTimer = 0f;
         Paused = false;
@@ -218,13 +223,14 @@ public class AlleyChuteDirector : MonoBehaviour
         else if (result == SortResult.Gold) Vault.Turn(LevelRules.GoldWorth);
     }
 
-    // The clues of every found level, in board order, are the keypad code.
+    // Every level's clue, in board order, is the keypad code. A clue never
+    // found still counts: it shows blank on the case file, like a barely
+    // readable one, and replaying its level finds it.
     void StartFinale(LevelRules level)
     {
         Vault.LockThrough(VaultProgress.Stages - 1);
         var code = new List<int>();
-        for (int i = 0; i < place.Count; i++)
-            if (CaseFile.Found(i)) code.Add(CaseFile.ClueAt(i).Symbol);
+        for (int i = 0; i < place.Count; i++) code.Add(CaseFile.ClueAt(i).Symbol);
         Finale = new VaultFinale(code);
         Paused = true;
         FinaleStarted?.Invoke(Finale);

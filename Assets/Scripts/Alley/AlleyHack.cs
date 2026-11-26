@@ -82,7 +82,6 @@ public class AlleyHack : MonoBehaviour
     int autoWrongAt = -1;
 
     public bool Running { get; private set; }
-    public IReadOnlyList<int> KeySymbols => keySymbols;
 
     public void Configure(AlleyChuteDirector chute, AlleyCameraRig rig, Material overlayMaterial, Renderer[] keyRenderers, TextMeshPro[] keyGlyphs,
         Renderer[] progressLamps, Transform cameraSpot, Light padLight, Light alarm)
@@ -299,14 +298,14 @@ public class AlleyHack : MonoBehaviour
         int clue = 0;
         for (int level = 0; level < director.Place.Count && clue < count; level++)
         {
-            if (!director.CaseFile.Found(level)) continue;
             Clue found = director.CaseFile.ClueAt(level);
             float x = count == 1 ? 0.5f : 0.15f + 0.7f * clue / (count - 1);
             Vector2 at = new Vector2(x, 0.885f);
             stripCards[clue] = overlay.Quad(root, "Card_" + clue, at, new Vector2(0.1f, 0.06f), Paper, 0.004f);
             stripGlyphs[clue] = overlay.Text(root, "Glyph_" + clue, at, new Vector2(0.08f, 0.04f), SymbolColors[found.Symbol]);
             stripGlyphs[clue].text = Glyphs[found.Symbol];
-            stripHideAt[clue] = startedAt + ClueRules.FinaleSecondsFor(found.Tier);
+            // A clue never found shows like a barely readable one: not at all.
+            stripHideAt[clue] = director.CaseFile.Found(level) ? startedAt + ClueRules.FinaleSecondsFor(found.Tier) : startedAt;
             clue++;
         }
         FadeStrip();

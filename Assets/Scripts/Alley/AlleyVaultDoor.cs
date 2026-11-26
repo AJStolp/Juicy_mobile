@@ -41,7 +41,6 @@ public class AlleyVaultDoor : MonoBehaviour
     bool cracking;
     bool rested;
 
-    public bool Cracking => cracking;
     public int Pops { get; private set; }
     public int Cracks { get; private set; }
     public Vector3 Focus => wheel != null ? wheel.position : transform.position;
@@ -67,7 +66,14 @@ public class AlleyVaultDoor : MonoBehaviour
         vault = progress;
         vault.StageLocked += OnStageLocked;
         vault.Cracked += OnCracked;
+        vault.Restarted += OnRestarted;
         Snap();
+    }
+
+    // A fresh door: the bolts slide home and the rest grinds back in Update.
+    void OnRestarted()
+    {
+        for (int i = 0; i < Bolts; i++) popped[i] = false;
     }
 
     void Awake()
@@ -144,6 +150,7 @@ public class AlleyVaultDoor : MonoBehaviour
         if (vault == null) return;
         vault.StageLocked -= OnStageLocked;
         vault.Cracked -= OnCracked;
+        vault.Restarted -= OnRestarted;
         vault = null;
     }
 

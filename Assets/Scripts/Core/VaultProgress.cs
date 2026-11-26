@@ -10,9 +10,10 @@ public class VaultProgress
 {
     public const int Stages = 7;
 
-    public event Action<int, float> Turned;
     public event Action<int> StageLocked;
     public event Action Cracked;
+    // A fresh door: every stage open again.
+    public event Action Restarted;
 
     public int TurnsPerStage { get; private set; } = 1;
     public int Stage { get; private set; }
@@ -26,7 +27,7 @@ public class VaultProgress
         TurnsPerStage = Mathf.Max(1, turnsPerStage);
         Stage = 0;
         Turns = 0;
-        Turned?.Invoke(Stage, 0f);
+        Restarted?.Invoke();
     }
 
     public void Turn(int amount)
@@ -44,7 +45,6 @@ public class VaultProgress
             Cracked?.Invoke();
             return;
         }
-        Turned?.Invoke(Stage, StageFraction);
     }
 
     // Locks every stage up to (not including) `stage`, for a door that must

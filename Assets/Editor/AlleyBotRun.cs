@@ -132,10 +132,12 @@ public static class AlleyBotRun
         hooked = true;
         // AlleyBatch.BotFilm skips the numbers and only films.
         bool filmOnly = SessionState.GetBool("JuicyBotFilmOnly", false);
+        // AlleyBatch.BotVault plays only the vault: the level after the last.
+        bool vaultOnly = SessionState.GetBool("JuicyBotVaultOnly", false);
         if (!filmOnly)
         {
             // Every level, then the vault (Boss) with every clue found clear.
-            for (int level = 0; level <= director.Place.Count; level++)
+            for (int level = vaultOnly ? director.Place.Count : 0; level <= director.Place.Count; level++)
             {
                 for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Careful });
                 for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Sloppy });

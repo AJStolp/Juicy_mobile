@@ -130,8 +130,8 @@ public static partial class AlleySceneBuilder
     }
 
     // The hack keypad sits on the building front beside the vault door, at
-    // hand height: a steel plate with six symbol keys in two columns and the
-    // reward ladder's lamps above them. The hack camera holds square on it,
+    // hand height: a steel plate with six symbol keys in two columns and a
+    // lamp per clue above them. The hack camera holds square on it,
     // close enough that every key reads on a phone.
     static AlleyHack BuildHack(Transform parent, AlleyChuteDirector director, AlleyVaultDoor vaultDoor, AlleyCameraRig rig)
     {

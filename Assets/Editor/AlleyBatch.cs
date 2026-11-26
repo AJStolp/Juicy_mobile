@@ -119,10 +119,14 @@ public static class AlleyBatch
     // Only the six films and the home still, without the numbers.
     public static void BotFilm() => StartBot(true);
 
-    static void StartBot(bool filmOnly)
+    // Only the vault's numbers, then the films: for tuning the boss.
+    public static void BotVault() => StartBot(false, true);
+
+    static void StartBot(bool filmOnly, bool vaultOnly = false)
     {
         OpenAlley();
         SessionState.SetBool("JuicyBotFilmOnly", filmOnly);
+        SessionState.SetBool("JuicyBotVaultOnly", vaultOnly);
         System.IO.File.Delete("/tmp/juicy-level-home.png");
         System.IO.File.Delete("/tmp/juicy-bot.txt");
         SessionState.SetBool("JuicyBotBatch", true);
@@ -464,6 +468,14 @@ public static class AlleyBatch
             case 18:
                 AlleySceneBuilder.Capture("/tmp/juicy-map-vault-cracked.png");
                 MapExpect(map.Showing && !UnityEngine.Object.FindAnyObjectByType<AlleyClueReveal>().Showing, "after the vault, a tap goes straight to the map (no clue to scratch)");
+                MapExpect(map.Choose(0), "City 1 replays after the crack");
+                // The crack swings the door open and shut over about 6 seconds first.
+                MapStep(19, 3, 7f);
+                return;
+            case 19:
+            {
+                var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
+                MapExpect(director.Vault.Stage == 0 && door.LockedShown() == 0, "the next attempt starts on a fresh door (" + door.LockedShown() + " stages shown locked)");
                 UnityEngine.Application.logMessageReceived -= CountMapError;
                 MapExpect(mapErrors == 0, "no errors logged during play (" + mapErrors + (mapErrors > 0 ? ", first: " + mapFirstError : "") + ")");
                 System.IO.File.WriteAllText(MapReport, (mapOk ? "PASS" : "FAIL") + " map check\n" + mapLog +
@@ -472,6 +484,7 @@ public static class AlleyBatch
                 SessionState.SetInt(MapStepKey, 90);
                 EditorApplication.isPlaying = false;
                 return;
+            }
             case 90:
                 if (EditorApplication.isPlaying) return;
                 SessionState.SetInt(MapStepKey, 0);
