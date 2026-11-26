@@ -2,9 +2,9 @@ using System;
 
 // The clues of one place, one per level, kept on the crime board. Each
 // level's clue is a fixed symbol from the vault keypad's set, drawn by the
-// place's seed with no repeats in the first eight levels (a place has six). Winning a level finds its clue, as clearly as
-// the best streak tier of that attempt; a replay can make it clearer, never
-// less clear.
+// place's seed with no repeats in the first eight levels (a place has six).
+// Winning a level finds its clue, as clearly as the best streak tier of that
+// attempt; a replay can make it clearer, never less clear.
 public class CaseFile
 {
     public const int Unfound = -1;
