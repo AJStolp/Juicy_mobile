@@ -181,8 +181,14 @@ public class AlleyMap : MonoBehaviour
             state == StopState.Open ? Ink : new Color(0.7f, 0.7f, 0.72f));
         // Locked reads as a word: "?" is one of the clue symbols.
         big.text = state == StopState.Open ? "PLAY" : "LOCKED";
-        // A beaten level's photo shows the clue found there (T-036).
-        if (state == StopState.Beaten && director.CaseFile.Found(index))
+        // A beaten level's photo shows the clue found there (T-036). One
+        // beaten before clues existed says a replay will find it.
+        if (state == StopState.Beaten && !director.CaseFile.Found(index))
+        {
+            big.text = "REPLAY";
+            big.color = Neon;
+        }
+        else if (state == StopState.Beaten)
         {
             Clue clue = director.CaseFile.ClueAt(index);
             big.text = AlleyHack.Glyphs[clue.Symbol];

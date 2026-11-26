@@ -41,6 +41,9 @@ public class AlleyClueReveal : MonoBehaviour
     GameObject result;
     int cleared;
     float revealedAt;
+    // The pinning tap must start after the reveal, so lifting the finger that
+    // finished the scratch never skips past the clue.
+    bool freshPress;
 
     public bool Showing => content != null && content.activeSelf;
     public bool Revealed { get; private set; }
@@ -150,8 +153,9 @@ public class AlleyClueReveal : MonoBehaviour
             if (pointer != null && pointer.press.isPressed) ScratchScreen(pointer.position.ReadValue());
             return;
         }
-        if (Time.unscaledTime < revealedAt + TapGuard) return;
-        if (pointer != null && pointer.press.wasReleasedThisFrame) Continue();
+        if (pointer == null || Time.unscaledTime < revealedAt + TapGuard) return;
+        if (pointer.press.wasPressedThisFrame) freshPress = true;
+        if (freshPress && pointer.press.wasReleasedThisFrame) Continue();
     }
 
     void ScratchScreen(Vector2 screen)
@@ -194,6 +198,7 @@ public class AlleyClueReveal : MonoBehaviour
         for (int i = 0; i < cells.Count; i++)
             if (cells[i].gameObject.activeSelf) Clear(i);
         Revealed = true;
+        freshPress = false;
         revealedAt = Time.unscaledTime;
         instruction.gameObject.SetActive(false);
         result.SetActive(true);
