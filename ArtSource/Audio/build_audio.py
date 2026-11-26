@@ -257,9 +257,6 @@ def effects():
     for n_ in ["C5", "G5", "C6", "E6", "G6"]:
         b.add(0.9, tone(note(n_), 1.6, "bell", decay=0.6, release=0.4), 0.22)
     fx["vault_crack"] = b.data
-    # The getaway: a tire squeal.
-    fx["tire_squeal"] = mix((tone(1900, 1.0, "saw", attack=0.05, release=0.3, vibrato=0.04), 0.25),
-                            (noise(1.0, 15, highpass=1500, cutoff=6000, attack=0.05, release=0.3), 0.5))
     return fx
 
 

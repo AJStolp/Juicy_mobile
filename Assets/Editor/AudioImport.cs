@@ -9,6 +9,9 @@ public class AudioImport : AssetPostprocessor
 {
     const string Root = "Assets/Resources/Audio/";
 
+    // Bump when the settings below change, so Unity reimports the audio.
+    public override uint GetVersion() => 2;
+
     void OnPreprocessAudio()
     {
         if (!assetPath.StartsWith(Root)) return;
@@ -19,6 +22,7 @@ public class AudioImport : AssetPostprocessor
         settings.loadType = music ? AudioClipLoadType.Streaming : AudioClipLoadType.DecompressOnLoad;
         settings.compressionFormat = music ? AudioCompressionFormat.Vorbis : AudioCompressionFormat.ADPCM;
         settings.quality = music ? 0.6f : 1f;
+        settings.preloadAudioData = !music;
         importer.defaultSampleSettings = settings;
     }
 }

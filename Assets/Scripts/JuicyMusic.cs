@@ -22,6 +22,8 @@ public class JuicyMusic : MonoBehaviour
 
     public static void Play(Track track)
     {
+        // Only in play: outside it a new object would be left in the scene.
+        if (!Application.isPlaying) return;
         if (Instance == null) new GameObject("JuicyMusic").AddComponent<JuicyMusic>();
         Instance.Switch(track);
     }
@@ -70,6 +72,8 @@ public class JuicyMusic : MonoBehaviour
         playing = track;
         current = 1 - current;
         AudioSource next = sources[current];
+        // Switching back to the track still fading out picks it up where it is.
+        if (next.isPlaying && next.clip == clips[(int)track]) return;
         next.clip = clips[(int)track];
         next.volume = 0f;
         if (next.clip != null) next.Play();

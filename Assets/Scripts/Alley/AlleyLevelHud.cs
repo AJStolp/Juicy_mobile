@@ -130,8 +130,9 @@ public class AlleyLevelHud : MonoBehaviour
     {
         content.SetActive(true);
         bool won = level.State == LevelState.Won;
-        if (won) JuicyAudioHooks.Won();
-        else JuicyAudioHooks.Failed();
+        // A cracked vault already plays its own boom and chord.
+        if (!won) JuicyAudioHooks.Failed();
+        else if (!director.IsBoss) JuicyAudioHooks.Won();
         titleText.color = won ? Win : Fail;
         if (director.IsBoss && won)
         {

@@ -170,7 +170,8 @@ public class AlleyVaultDoor : MonoBehaviour
     {
         if (cracking) return;
         shown[stage] = 1f;
-        JuicyAudioHooks.Vault();
+        // The last stage cracks the vault, which has its own sound.
+        if (!vault.IsCracked) JuicyAudioHooks.Vault();
         if (stage < Bolts) popped[stage] = true;
         if (cameraRig != null)
         {

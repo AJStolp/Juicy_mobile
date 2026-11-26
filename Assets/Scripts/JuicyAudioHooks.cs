@@ -10,7 +10,7 @@ public class JuicyAudioHooks : MonoBehaviour
     public static readonly string[] ClipNames =
     {
         "sort_ding", "sort_wrong", "miss", "flick", "boom", "cash", "streak_up", "level_won", "level_failed",
-        "scratch", "reveal", "pin", "tap", "vault_unbolt", "vault_crack", "tire_squeal",
+        "scratch", "reveal", "pin", "tap", "vault_unbolt", "vault_crack",
     };
 
     // A correct sort rises a little in pitch with each sort of a streak.
@@ -20,12 +20,18 @@ public class JuicyAudioHooks : MonoBehaviour
     public static JuicyAudioHooks Instance { get; private set; }
 
     readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
+    // Dings each get their own source, round robin, so a new pitch never
+    // bends the tail of one still ringing.
+    const int PitchedVoices = 4;
+
     AudioSource source;
-    AudioSource pitched;
+    AudioSource[] pitched;
+    int nextPitched;
 
     public static void Ensure()
     {
-        if (Instance != null) return;
+        // Only in play: outside it a new object would be left in the scene.
+        if (Instance != null || !Application.isPlaying) return;
         new GameObject("JuicyAudioHooks").AddComponent<JuicyAudioHooks>();
     }
 
@@ -41,9 +47,13 @@ public class JuicyAudioHooks : MonoBehaviour
         source = gameObject.AddComponent<AudioSource>();
         source.playOnAwake = false;
         source.spatialBlend = 0f;
-        pitched = gameObject.AddComponent<AudioSource>();
-        pitched.playOnAwake = false;
-        pitched.spatialBlend = 0f;
+        pitched = new AudioSource[PitchedVoices];
+        for (int i = 0; i < PitchedVoices; i++)
+        {
+            pitched[i] = gameObject.AddComponent<AudioSource>();
+            pitched[i].playOnAwake = false;
+            pitched[i].spatialBlend = 0f;
+        }
         foreach (string name in ClipNames)
         {
             AudioClip clip = Resources.Load<AudioClip>("Audio/" + name);
@@ -62,6 +72,7 @@ public class JuicyAudioHooks : MonoBehaviour
     public static void Sort(int streak)
     {
         Ensure();
+        if (Instance == null) return;
         Instance.PlayPitched("sort_ding", 0.75f, 1f + PitchPerStreak * Mathf.Min(streak, PitchStreakCap));
     }
 
@@ -79,7 +90,6 @@ public class JuicyAudioHooks : MonoBehaviour
     public static void Tap() => Play("tap", 0.6f);
     public static void Vault() => Play("vault_unbolt", 0.85f);
     public static void Crack() => Play("vault_crack", 0.95f);
-    public static void Getaway() => Play("tire_squeal", 0.7f);
     // A right key on the vault keypad.
     public static void Beep() => Play("keypad_beep", 0.6f);
     // A wrong key on the vault keypad.
@@ -88,13 +98,16 @@ public class JuicyAudioHooks : MonoBehaviour
     static void Play(string name, float volume)
     {
         Ensure();
+        if (Instance == null) return;
         Instance.PlayClip(Instance.source, name, volume);
     }
 
     void PlayPitched(string name, float volume, float pitch)
     {
-        pitched.pitch = pitch;
-        PlayClip(pitched, name, volume);
+        AudioSource voice = pitched[nextPitched];
+        nextPitched = (nextPitched + 1) % PitchedVoices;
+        voice.pitch = pitch;
+        PlayClip(voice, name, volume);
     }
 
     void PlayClip(AudioSource on, string name, float volume)
