@@ -44,7 +44,6 @@ public class AlleyMap : MonoBehaviour
     Vector3 pulseBase;
     float shownAt;
 
-    public Look Style => look;
     public bool Showing => content != null && content.activeSelf;
 
     public void Configure(AlleyChuteDirector chute, Material material)

@@ -363,6 +363,33 @@ public static class AlleyBatch
         var director = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyChuteDirector>() : null;
         var map = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyMap>() : null;
         var hud = EditorApplication.isPlaying ? UnityEngine.Object.FindAnyObjectByType<AlleyLevelHud>() : null;
+        // Anything missing or throwing ends the check as a FAIL, so play
+        // mode stops and the real save is always put back.
+        if (step < 90 && (director == null || map == null || hud == null))
+        {
+            if (UnityEngine.Time.frameCount < 10) return;
+            MapAbort("the director, map or HUD is missing from the scene");
+            return;
+        }
+        try
+        {
+            MapCheckStep(step, director, map, hud);
+        }
+        catch (System.Exception error)
+        {
+            MapAbort(error.ToString());
+        }
+    }
+
+    static void MapAbort(string why)
+    {
+        System.IO.File.WriteAllText(MapReport, "FAIL map check\n" + mapLog + "stopped: " + why + "\n");
+        SessionState.SetInt(MapStepKey, 90);
+        if (EditorApplication.isPlaying) EditorApplication.isPlaying = false;
+    }
+
+    static void MapCheckStep(int step, AlleyChuteDirector director, AlleyMap map, AlleyLevelHud hud)
+    {
         switch (step)
         {
             case 1:

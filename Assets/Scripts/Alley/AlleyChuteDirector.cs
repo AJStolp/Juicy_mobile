@@ -28,8 +28,6 @@ public class AlleyChuteDirector : MonoBehaviour
     [SerializeField] float flightTime = 0.32f;
     [SerializeField] float trashTime = 0.45f;
     [SerializeField] PlaceData place;
-    [Tooltip("Which of the place's levels plays, counting from 0.")]
-    [SerializeField] int levelIndex;
     [SerializeField] bool autoPlay;
     [Range(0f, 1f)] [SerializeField] float autoMistakes = 0.12f;
     [Tooltip("Auto play waits this long after a drop appears before it can swipe it, like a person.")]
@@ -52,6 +50,9 @@ public class AlleyChuteDirector : MonoBehaviour
 
     bool paused;
     bool clearQueued;
+    // Which of the place's levels is playing, counting from 0. Starts at the
+    // next unbeaten one.
+    int levelIndex;
 
     public HeistSortRules Rules { get; private set; }
     public VaultProgress Vault { get; private set; }

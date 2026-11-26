@@ -8,8 +8,6 @@ public class PlaceProgress
     public int Levels { get; }
     public int Beaten { get; private set; }
 
-    public event Action<int> Changed;
-
     public PlaceProgress(int levels)
     {
         Levels = Math.Max(1, levels);
@@ -26,12 +24,10 @@ public class PlaceProgress
     {
         if (!IsOpen(index) || index < Beaten) return;
         Beaten = index + 1;
-        Changed?.Invoke(Beaten);
     }
 
     public void Restore(int beaten)
     {
         Beaten = Math.Max(0, Math.Min(beaten, Levels));
-        Changed?.Invoke(Beaten);
     }
 }
