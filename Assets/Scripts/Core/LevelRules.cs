@@ -12,8 +12,10 @@ public enum LevelState { Playing, Won, Failed }
 // Misses left is how many more gems the player can lose and still reach the
 // target. A lost gem costs one. Dynamite must be flicked up: letting it land
 // or sorting it into a chest costs one. Cash in either chest, or flicked up,
-// counts as two sorts, which gives two back. The level fails the moment misses
-// left drops below zero, so a lost level ends straight away.
+// counts as two sorts, which gives two back. Cash still to fall is a bonus and
+// is not counted ahead. The level fails the moment misses left would drop
+// below zero, so a lost level ends straight away and the player saw it coming
+// on the counter.
 public class LevelRules
 {
     public const int GoldWorth = 2;

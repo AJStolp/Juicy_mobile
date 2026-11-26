@@ -28,9 +28,6 @@ public class HeistSortRules
     const double WordBonus = 2500d;
     const double HeistWordBonus = 25000d;
 
-    public float BombChance = 0.15f;
-    public float LetterChance = 0.10f;
-    public float GoldChance = 0.10f;
     public int CorrectsToFillVat = 3;
     public float PenaltyStep = 0.1f;
     public int VatFillsPerLeg = 4;
@@ -113,28 +110,6 @@ public class HeistSortRules
         if (Mathf.Abs(delta.y) > Mathf.Abs(delta.x))
             return delta.y > 0f ? 2 : 0;
         return delta.x < 0f ? -1 : 1;
-    }
-
-    public ItemKind KindForRoll(float roll)
-    {
-        if (roll < BombChance) return ItemKind.Bomb;
-        if (roll < BombChance + LetterChance) return ItemKind.Letter;
-        if (roll < BombChance + LetterChance + GoldChance) return ItemKind.Gold;
-        return ItemKind.Gem;
-    }
-
-    // Letters are drawn from the word in progress, preferring ones still missing.
-    public char PickLetter(float roll)
-    {
-        string word = ActiveWord;
-        int missing = word.Length - LettersFilled;
-        int pick = Mathf.Clamp((int)(roll * Mathf.Max(1, missing)), 0, Mathf.Max(0, missing - 1));
-        for (int i = 0; i < word.Length; i++)
-        {
-            if (filled[i]) continue;
-            if (pick-- == 0) return word[i];
-        }
-        return word[0];
     }
 
     public void Tick(float dt)
