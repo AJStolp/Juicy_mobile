@@ -89,7 +89,7 @@ public class JuicyAudioHooks : MonoBehaviour
     public static void Pin() => Play("pin", 0.8f);
     public static void Tap() => Play("tap", 0.6f);
     public static void Vault() => Play("vault_unbolt", 0.85f);
-    public static void Crack() => Play("vault_crack", 0.95f);
+    public static void Crack() => Play("vault_crack", 0.85f);
     // A right key on the vault keypad.
     public static void Beep() => Play("keypad_beep", 0.6f);
     // A wrong key on the vault keypad.
