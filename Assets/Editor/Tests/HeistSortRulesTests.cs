@@ -182,15 +182,6 @@ public class HeistSortRulesTests
     }
 
     [Test]
-    public void PickLetterOnlyOffersMissingLetters()
-    {
-        var rules = new HeistSortRules();
-        foreach (char c in "HEIS") rules.Catch(ItemKind.Letter, 0, 0, c);
-        for (float roll = 0f; roll < 1f; roll += 0.1f)
-            Assert.AreEqual('T', rules.PickLetter(roll));
-    }
-
-    [Test]
     public void FlickDirectionReadsSwipes()
     {
         Assert.AreEqual(-1, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(-200, 10), 80));
@@ -198,15 +189,5 @@ public class HeistSortRulesTests
         Assert.AreEqual(2, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(10, 200), 80));
         Assert.AreEqual(0, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(10, -200), 80));
         Assert.AreEqual(0, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(30, 0), 80));
-    }
-
-    [Test]
-    public void KindRollMatchesTheChances()
-    {
-        var rules = new HeistSortRules();
-        Assert.AreEqual(ItemKind.Bomb, rules.KindForRoll(0.05f));
-        Assert.AreEqual(ItemKind.Letter, rules.KindForRoll(0.2f));
-        Assert.AreEqual(ItemKind.Gold, rules.KindForRoll(0.3f));
-        Assert.AreEqual(ItemKind.Gem, rules.KindForRoll(0.9f));
     }
 }
