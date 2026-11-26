@@ -29,7 +29,7 @@ public static class AlleyBotRun
     const string DynamiteStill = "/tmp/juicy-level-dynamite.png";
     const string GoldStill = "/tmp/juicy-level-cash.png";
     const float Speed = 4f;
-    const int Attempts = 4;
+    const int Attempts = 8;
     // City 4: the first level with dynamite and gold both, so the films show every item.
     const int FilmLevel = 3;
     const float Careful = 0.1f;
