@@ -4,8 +4,9 @@ using UnityEngine.InputSystem;
 
 // The level's goal and result, drawn as text just in front of the camera so
 // every capture of the camera includes it. Top: gems sorted against the
-// target, and the gems still to fall. When an attempt ends: won with the gems
-// to spare, or how many gems short, and a tap to try again.
+// target, and how many more gems the player can lose and still win. When an
+// attempt ends: won with the misses to spare, or how many gems short, and a
+// tap to try again.
 public class AlleyLevelHud : MonoBehaviour
 {
     static readonly Color Neon = new Color(1f, 0.85f, 0.25f);
@@ -79,19 +80,18 @@ public class AlleyLevelHud : MonoBehaviour
         punch = Mathf.MoveTowards(punch, 0f, Time.deltaTime * 5f);
         gemsText.text = "GEMS " + level.Sorted + " / " + level.Target;
         gemsText.transform.localScale = Vector3.one * (1f + punch * 0.08f);
-        limitText.text = "GEMS LEFT TO FALL " + level.GemsLeft;
-        // Red once fewer than 10 misses are left to give.
-        limitText.color = level.GemsLeft + level.Sorted < level.Target + 10 ? Fail : Color.white;
+        limitText.text = "MISSES LEFT " + level.MissesLeft;
+        limitText.color = level.MissesLeft <= 3 ? Fail : Color.white;
         if (ShowingResult) TickRetry();
     }
 
     void ShowResult(LevelRules level)
     {
         bool won = level.State == LevelState.Won;
-        titleText.text = won ? "LEVEL WON" : "OUT OF GEMS";
+        titleText.text = won ? "LEVEL WON" : "TOO MANY MISSES";
         titleText.color = won ? Win : Fail;
         detailText.text = won
-            ? level.GemsLeft + (level.GemsLeft == 1 ? " GEM TO SPARE" : " GEMS TO SPARE")
+            ? level.MissesLeft + (level.MissesLeft == 1 ? " MISS TO SPARE" : " MISSES TO SPARE")
             : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
         panel.SetActive(true);
         shownAt = Time.unscaledTime;

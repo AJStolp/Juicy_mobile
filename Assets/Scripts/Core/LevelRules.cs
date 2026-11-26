@@ -3,10 +3,11 @@ using System;
 public enum LevelState { Playing, Won, Failed }
 
 // What wins or fails one level, with no presentation. A level drops a fixed
-// number of gems and asks for a number of them sorted correctly. It fails
-// once every gem has been sorted, lost or missed short of the target. The
-// gems come in the same color order on every attempt, set by the level's
-// seed, so a fail is the player's doing and not the draw's.
+// number of gems and asks for a number of them sorted correctly. It fails the
+// moment the target can no longer be reached: once more gems are lost than
+// the level has to spare. The gems come in the same color order on every
+// attempt, set by the level's seed, so a fail is the player's doing and not
+// the draw's.
 public class LevelRules
 {
     public const int DefaultTarget = 75;
@@ -49,8 +50,11 @@ public class LevelRules
 
     public bool Playing => State == LevelState.Playing;
 
-    // Gems still to fall. On a win, the gems that never had to.
+    // Gems still to fall.
     public int GemsLeft => Math.Max(0, GemLimit - Dropped);
+
+    // Gems the player can still lose and win. On a win, the ones never needed.
+    public int MissesLeft => Math.Max(0, GemLimit - Target - Lost);
 
     public bool CanDrop => Playing && Dropped < GemLimit;
 
@@ -82,7 +86,6 @@ public class LevelRules
         {
             Sorted++;
             if (Sorted >= Target) End(LevelState.Won);
-            else CheckGemsSpent();
             return;
         }
         if (result == SortResult.Wrong) OnLost(ItemKind.Gem);
@@ -92,13 +95,7 @@ public class LevelRules
     {
         if (!Playing || kind != ItemKind.Gem) return;
         Lost++;
-        CheckGemsSpent();
-    }
-
-    // Every gem has fallen and been sorted, lost or missed.
-    void CheckGemsSpent()
-    {
-        if (Playing && Sorted + Lost >= GemLimit) End(LevelState.Failed);
+        if (Lost > GemLimit - Target) End(LevelState.Failed);
     }
 
     void End(LevelState state)

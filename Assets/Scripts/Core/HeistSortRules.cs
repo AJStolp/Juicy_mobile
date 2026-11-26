@@ -52,7 +52,7 @@ public class HeistSortRules
     public event Action<ItemKind> Missed;
     public event Action<ItemKind> Trashed;
 
-    // Off for a level goal that is not about heat: mistakes then raise none.
+    // Off while a level is played (LevelRules): mistakes then raise no heat.
     public bool HeatOn = true;
 
     readonly int[] craft = new int[Sides];

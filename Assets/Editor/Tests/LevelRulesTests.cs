@@ -30,7 +30,7 @@ public class LevelRulesTests
     }
 
     [Test]
-    public void StopsDroppingAtTheLimitAndFailsOnceEveryGemIsSpent()
+    public void StopsDroppingAtTheLimit()
     {
         var rules = new HeistSortRules();
         var level = new LevelRules(rules, target: 8, gems: 10);
@@ -39,15 +39,34 @@ public class LevelRulesTests
         Assert.AreEqual(10, drops);
         Assert.AreEqual(10, level.Dropped);
         Assert.IsFalse(level.CanDrop);
-        Correct(rules, 6);
-        Wrong(rules, 1);
+    }
+
+    [Test]
+    public void FailsTheMomentTheTargetCanNoLongerBeReached()
+    {
+        var rules = new HeistSortRules();
+        var level = new LevelRules(rules, target: 75, gems: 90);
+        Correct(rules, 20);
+        Wrong(rules, 10);
         rules.Trash(ItemKind.Gem);
-        Assert.AreEqual(LevelState.Playing, level.State);
         rules.Miss(ItemKind.Gem);
-        Assert.AreEqual(LevelState.Playing, level.State);
-        Correct(rules, 1);
+        Wrong(rules, 3);
+        Assert.AreEqual(LevelState.Playing, level.State, "15 lost of 15 to spare still wins with no more");
+        Assert.AreEqual(0, level.MissesLeft);
+        rules.Miss(ItemKind.Gem);
         Assert.AreEqual(LevelState.Failed, level.State);
-        Assert.AreEqual(1, level.ShortBy);
+        Assert.AreEqual(55, level.ShortBy);
+    }
+
+    [Test]
+    public void WinningWithEveryMissUnusedLeavesThemAllToSpare()
+    {
+        var rules = new HeistSortRules();
+        var level = new LevelRules(rules, target: 5, gems: 9);
+        Wrong(rules, 1);
+        Correct(rules, 5);
+        Assert.AreEqual(LevelState.Won, level.State);
+        Assert.AreEqual(3, level.MissesLeft);
     }
 
     [Test]

@@ -166,7 +166,7 @@ public static class AlleyBotRun
         bool won = level.State == LevelState.Won;
         string line = "mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
             " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost +
-            (won ? " spare " + level.GemsLeft : " short " + level.ShortBy) +
+            (won ? " misses to spare " + level.MissesLeft : " short " + level.ShortBy) +
             " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0");
         if (!run.Film)
         {
