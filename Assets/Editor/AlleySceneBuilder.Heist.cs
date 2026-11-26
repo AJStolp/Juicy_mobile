@@ -130,8 +130,8 @@ public static partial class AlleySceneBuilder
     }
 
     // The hack keypad sits on the building front beside the vault door, at
-    // hand height: a steel plate with six symbol keys in two columns and the
-    // reward ladder's lamps above them. The hack camera holds square on it,
+    // hand height: a steel plate with six symbol keys in two columns and a
+    // lamp per clue above them. The hack camera holds square on it,
     // close enough that every key reads on a phone.
     static AlleyHack BuildHack(Transform parent, AlleyChuteDirector director, AlleyVaultDoor vaultDoor, AlleyCameraRig rig)
     {
@@ -172,15 +172,13 @@ public static partial class AlleySceneBuilder
             glyphs[i] = KeypadText(renderer.transform, "?", Color.white);
         }
 
-        var lamps = new Renderer[AlleyHack.LadderLamps];
-        var labels = new TextMeshPro[AlleyHack.LadderLamps];
-        const float lampStep = 0.096f;
-        for (int i = 0; i < AlleyHack.LadderLamps; i++)
+        // One lamp per clue to enter, lit as each goes in.
+        var lamps = new Renderer[AlleyHack.Lamps];
+        const float lampStep = 0.064f;
+        for (int i = 0; i < AlleyHack.Lamps; i++)
         {
-            Vector3 at = new Vector3((i - (AlleyHack.LadderLamps - 1) * 0.5f) * lampStep, 0.255f, -0.03f);
-            Renderer renderer = KeypadBlock("Lamp_" + i, root.transform, at, new Vector3(lampStep - 0.01f, 0.08f, 0.03f), tileMaterial, false);
-            lamps[i] = renderer;
-            labels[i] = KeypadText(renderer.transform, "", new Color(0.05f, 0.04f, 0.03f));
+            Vector3 at = new Vector3((i - (AlleyHack.Lamps - 1) * 0.5f) * lampStep, 0.255f, -0.03f);
+            lamps[i] = KeypadBlock("Lamp_" + i, root.transform, at, new Vector3(lampStep - 0.012f, 0.06f, 0.03f), tileMaterial, false);
         }
 
         // From a little above, looking down at the keys like a person would.
@@ -203,7 +201,7 @@ public static partial class AlleySceneBuilder
         alarm.shadows = LightShadows.None;
 
         AlleyHack hack = root.AddComponent<AlleyHack>();
-        hack.Configure(director, vaultDoor, rig, keys, glyphs, lamps, labels, viewObject.transform, padLight, alarm);
+        hack.Configure(director, rig, HudPanelMaterial(), keys, glyphs, lamps, viewObject.transform, padLight, alarm);
         EditorUtility.SetDirty(root);
         return hack;
     }

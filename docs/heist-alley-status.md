@@ -22,13 +22,14 @@ A diegetic color sort game with casino style juice: everything happens inside th
 - **Misses left** is how many more gems can be lost with the target still in reach. A lost gem or a dynamite mistake takes one; a cash stack gives two back. The level is won at the target and failed the moment misses left would go below zero. Cash still to fall is a bonus and is not counted ahead, so the counter on screen is what decides a fail.
 - The top of the screen shows gems sorted against the target and the misses left, which turn red at 3. Each attempt opens on the level's name and hint for 3 seconds. When an attempt ends, a panel shows LEVEL WON with the misses to spare, or TOO MANY MISSES with how many gems short. Tap anywhere: after a win it goes back to the map, after a fail it tries again. A fail costs only the attempt: cash and gear carry over.
 - A correct sort pays 50 times the streak tier (x2 at 5, x3 at 10, x5 at 15). A cash stack pays 150. The balance rolls up on the vault timer's screen.
-- **Held back for the boss (T-026, T-037):** letter tiles do not fall; heat is off, so there are no busts; the vault door does not turn; the HEIST word sign is hidden; and the clue hack never comes due. Their code is still in place.
-- **Progress saves** between sittings: cash and gear (`HeistSave`, in PlayerPrefs).
+- **The vault is the city's boss** (T-037). It opens on the board once all six levels are beaten. It is a longer, faster sort (`PlaceData.Boss`) during which every correct sort turns the vault door, which locks its first six stages across the target (`VaultProgress`, fresh each attempt). At the target the win is held (`LevelRules.HoldsWin`) and the camera goes to the keypad beside the door (`AlleyHack`): its six keys hold the city's clues, shuffled, and the case file runs along the top, where CLEAR and CRYSTAL CLEAR clues stay readable, a SMUDGED one shows for 3 seconds and a BARELY READABLE one never shows (`ClueRules.FinaleSecondsFor`). A clue never found (a level beaten before clues existed) still belongs to the code and shows blank; replaying its level finds it. Tap the clues in board order (`VaultFinale`): a wrong tap sounds the alarm and the same clue is still wanted; the third trips it and fails the attempt (ALARM TRIPPED, with how many clues went in). Entering all of them turns the wheel and swings the door open: VAULT CRACKED, $25,000, and the board marks the vault cracked.
+- **Held back:** letter tiles do not fall; heat is off, so there are no busts; the HEIST word sign is hidden. Their code is still in place.
+- **Progress saves** between sittings: cash, gear, the city's levels beaten, the clues found and whether the vault is cracked (`HeistSave`, in PlayerPrefs).
 
 ## How the alley reacts
 
 - The raccoon stands centered on the manhole in his torch idle. He does a light push on sorts and a heavy push on vat fills, vault stages and the crack.
-- The vault door creeps forward as turns come in and grinds back slowly on a bust. The bars and handle slide as their stage fills, the gear lock turns, and the wheel turns a quarter per stage. The HEIST word sign sits centered above the door frame, clear of the door. Locks, rollbacks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
+- The vault door creeps forward as turns come in and grinds back slowly to a fresh door when the next attempt starts, its bars sliding home. The bars and handle slide as their stage fills, the gear lock turns, and the wheel turns a quarter per stage. The HEIST word sign sits centered above the door frame, clear of the door. Locks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
 - The chests glow brighter as their vat fills, flash orange on a mistake, and snap their lid open as an item drops in.
 - The police strobe and the vault alarms run faster and brighter with heat. A bust shakes the camera. `AlleyCameraRig` owns every camera move: shakes, pushes, and holds on a pose.
 - Lamps flicker, the wall lamps hum, steam rises from the manhole, and clouds drift across the moon.
@@ -38,7 +39,7 @@ A diegetic color sort game with casino style juice: everything happens inside th
 | What | Where |
 |---|---|
 | Sort rules, no presentation | `Assets/Scripts/Core/HeistSortRules.cs` |
-| Vault stages, clue hack rules, gear, the save | `VaultProgress.cs`, `ClueRules.cs`, `GearKind.cs`, `HeistSave.cs` in `Assets/Scripts/Core/` |
+| Vault stages, clue clarity, the vault finale, gear, the save | `VaultProgress.cs`, `ClueRules.cs`, `VaultFinale.cs`, `GearKind.cs`, `HeistSave.cs` in `Assets/Scripts/Core/` |
 | Rule tests | `Assets/Editor/Tests/` |
 | Vault door, camera moves | `AlleyVaultDoor.cs`, `AlleyCameraRig.cs` in `Assets/Scripts/Alley/` |
 | Falling items, swipes, chests, reactions, score | `Assets/Scripts/Alley/` |
@@ -75,7 +76,7 @@ $U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit   # street
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Bot              # no -quit; exits when the report is written
 $U -batchmode -projectPath . -executeMethod AlleyBatch.BotFilm          # no -quit; only the two films, no numbers
 $U -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck        # no -quit
-$U -batchmode -projectPath . -executeMethod AlleyBatch.MapCheck         # no -quit; plays the map and a clue reveal through, stills in /tmp/juicy-map-*.png and /tmp/juicy-reveal-*.png, result in /tmp/juicy-map.txt
+$U -batchmode -projectPath . -executeMethod AlleyBatch.MapCheck         # no -quit; plays the map, a clue reveal and the vault through, stills in /tmp/juicy-map-*.png and /tmp/juicy-reveal-*.png, result in /tmp/juicy-map.txt
 $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults <file>
 ```
 
@@ -89,4 +90,4 @@ Running tools in the open editor: write an `AlleyBatch` method name to `/tmp/jui
 
 ## TLDR
 
-The game opens on the city's map, a crime board of six levels and the vault where each win pins a scratched off clue, and plays the city's six levels, each a set of numbers in one asset, with dynamite to flick up arriving in City 3 and cash stacks worth two in City 4. Everything falls in the same order every attempt, and sorting the target into the two deposit chests wins it. Run out of misses and the panel says how many gems short, with a tap to try again that costs only the attempt. Every correct sort pays cash on the streak. The other items, heat, the vault door and the clue hack are held back for the levels and the boss that bring them back (T-026). The launch plan is on the board under T-030. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).
+The game opens on the city's map, a crime board of six levels and the vault where each win pins a scratched off clue, and plays the city's six levels, each a set of numbers in one asset, with dynamite to flick up arriving in City 3 and cash stacks worth two in City 4. Everything falls in the same order every attempt, and sorting the target into the two deposit chests wins it. Beat all six and the vault opens: a faster sort that turns the door, then a keypad finale where the city's clues, shown as clearly as you found them, are the code. Run out of misses and the panel says how many gems short, with a tap to try again that costs only the attempt. Every correct sort pays cash on the streak. Letters and heat are held back. The launch plan is on the board under T-030. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).

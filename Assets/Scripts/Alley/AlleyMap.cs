@@ -39,6 +39,7 @@ public class AlleyMap : MonoBehaviour
     CameraOverlay overlay;
     GameObject content;
     Renderer[] stopHits;
+    Renderer vaultHit;
     Renderer switchHit;
     Transform pulse;
     Vector3 pulseBase;
@@ -96,7 +97,10 @@ public class AlleyMap : MonoBehaviour
         if (Showing) Build();
     }
 
-    // Plays an open stop. False for a locked one or the vault.
+    // Plays the vault once every level is beaten (again after it is cracked).
+    public bool ChooseVault() => director.PlayBoss();
+
+    // Plays an open stop. False for a locked one.
     public bool Choose(int index)
     {
         if (index < 0 || index >= director.Place.Count || !director.Progress.IsOpen(index)) return false;
@@ -119,6 +123,7 @@ public class AlleyMap : MonoBehaviour
         }
         for (int i = 0; i < stopHits.Length; i++)
             if (overlay.ScreenRect(stopHits[i]).Contains(tap) && Choose(i)) return;
+        if (vaultHit != null && overlay.ScreenRect(vaultHit).Contains(tap)) ChooseVault();
     }
 
     void Build()
@@ -127,6 +132,7 @@ public class AlleyMap : MonoBehaviour
         content = new GameObject("Map_" + look);
         content.transform.SetParent(transform, false);
         pulse = null;
+        vaultHit = null;
         stopHits = new Renderer[director.Place.Count];
         if (look == Look.Board) BuildBoard(content.transform);
         else BuildStreets(content.transform);
@@ -205,19 +211,33 @@ public class AlleyMap : MonoBehaviour
         caption.text = director.Place.Level(index).Name.ToUpperInvariant() + (state == StopState.Beaten ? "  DONE" : "");
     }
 
+    // The vault's caption: what it takes, or that it is done.
+    string VaultCaption() => director.Progress.VaultCracked ? "NEXT PLACE SOON"
+        : director.Progress.VaultOpen ? "TAP TO CRACK IT" : "BEAT ALL 6 FIRST";
+
     void BoardVault(Transform root)
     {
         Vector2 at = Stops[Stops.Length - 1];
-        bool ready = director.Progress.AllBeaten;
-        overlay.Quad(root, "Photo_Vault", at, new Vector2(0.42f, 0.13f), Paper, 0.0015f);
-        overlay.Quad(root, "Picture_Vault", at + new Vector2(0f, 0.01f), new Vector2(0.38f, 0.085f),
-            ready ? new Color(0.55f, 0.1f, 0.1f) : new Color(0.16f, 0.16f, 0.18f), 0.001f);
+        bool open = director.Progress.VaultOpen;
+        bool cracked = director.Progress.VaultCracked;
+        vaultHit = overlay.Quad(root, "Photo_Vault", at, new Vector2(0.42f, 0.13f), Paper, 0.0015f);
+        Color picture = cracked ? new Color(0.13f, 0.27f, 0.3f) : open ? new Color(0.95f, 0.72f, 0.18f) : new Color(0.16f, 0.16f, 0.18f);
+        overlay.Quad(root, "Picture_Vault", at + new Vector2(0f, 0.01f), new Vector2(0.38f, 0.085f), picture, 0.001f);
         overlay.Quad(root, "Pin_Vault", PinAt(Stops.Length - 1), new Vector2(0.03f, 0.016f), new Color(0.9f, 0.1f, 0.1f), 0.0005f);
-        TextMeshPro big = overlay.Text(root, "Mark_Vault", at + new Vector2(0f, 0.016f), new Vector2(0.34f, 0.05f), Paper);
-        big.text = "THE VAULT";
+        TextMeshPro big = overlay.Text(root, "Mark_Vault", at + new Vector2(0f, 0.016f), new Vector2(0.34f, 0.05f), open && !cracked ? Ink : Paper);
+        big.text = cracked ? "CRACKED" : "THE VAULT";
+        if (open && !cracked)
+        {
+            big.outlineWidth = 0f;
+            if (pulse == null)
+            {
+                pulse = vaultHit.transform;
+                pulseBase = vaultHit.transform.localScale;
+            }
+        }
         TextMeshPro caption = overlay.Text(root, "Caption_Vault", at + new Vector2(0f, -0.047f), new Vector2(0.36f, 0.022f), Ink);
         caption.outlineWidth = 0f;
-        caption.text = ready ? "BOSS LEVEL SOON" : "BEAT ALL 6 FIRST";
+        caption.text = VaultCaption();
     }
 
     void BuildStreets(Transform root)
@@ -268,12 +288,14 @@ public class AlleyMap : MonoBehaviour
     void StreetVault(Transform root)
     {
         Vector2 at = Stops[Stops.Length - 1];
-        bool ready = director.Progress.AllBeaten;
-        overlay.Quad(root, "Vault", at, Square(0.2f), ready ? new Color(0.9f, 0.2f, 0.2f) : Locked, 0.002f);
-        TextMeshPro big = overlay.Text(root, "Vault_Label", at, new Vector2(0.18f, 0.03f), Color.white);
+        bool open = director.Progress.VaultOpen;
+        bool cracked = director.Progress.VaultCracked;
+        vaultHit = overlay.Quad(root, "Vault", at, Square(0.2f), cracked ? Done : open ? Neon : Locked, 0.002f);
+        TextMeshPro big = overlay.Text(root, "Vault_Label", at, new Vector2(0.18f, 0.03f), open ? Ink : Color.white);
+        big.outlineWidth = open ? 0f : big.outlineWidth;
         big.text = "VAULT";
         TextMeshPro caption = overlay.Text(root, "Vault_Caption", at + new Vector2(0f, -0.075f), new Vector2(0.4f, 0.022f), Color.white);
-        caption.text = ready ? "BOSS LEVEL SOON" : "BEAT ALL 6 FIRST";
+        caption.text = VaultCaption();
     }
 
     // Prototype only: switches between the two looks.

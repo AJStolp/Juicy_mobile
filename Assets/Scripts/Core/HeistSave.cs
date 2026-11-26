@@ -1,51 +1,36 @@
 using System;
 using UnityEngine;
 
-// What carries over between sittings: where the vault is, the cash, the gear,
-// the unfinished clue cycle, how many of the place's levels are beaten and the
-// clues found in them. Legs, chutes, heat and streak start fresh
-// each sitting by design.
+// What carries over between sittings: the cash, the gear, how far through
+// the place the player is (levels beaten, the vault cracked) and the clues
+// found. Each level and vault attempt starts fresh by design.
 [Serializable]
 public class HeistSave
 {
-    public int heist = 1;
-    public int stage;
-    public int turns;
     public double balance = HeistSortRules.StartingBalance;
     public int[] gear = new int[Enum.GetValues(typeof(GearKind)).Length];
-    public int clueSeed;
-    public int clueCycle;
-    public int[] clueSymbols = new int[0];
-    public int[] clueTiers = new int[0];
     public int placeBeaten;
+    public bool vaultCracked;
     public int[] placeClueTiers = new int[0];
 
-    public static HeistSave Capture(VaultProgress vault, HeistSortRules rules, ClueRules clues, PlaceProgress place, CaseFile caseFile)
+    public static HeistSave Capture(HeistSortRules rules, PlaceProgress place, CaseFile caseFile)
     {
         var save = new HeistSave
         {
-            heist = vault.Heist,
-            stage = vault.Stage,
-            turns = vault.Turns,
             balance = rules.Balance,
-            clueSeed = clues.Seed,
-            clueCycle = clues.Cycle,
-            clueSymbols = clues.SymbolsSnapshot(),
-            clueTiers = clues.TiersSnapshot(),
             placeBeaten = place.Beaten,
+            vaultCracked = place.VaultCracked,
             placeClueTiers = caseFile.TiersSnapshot(),
         };
         for (int i = 0; i < save.gear.Length; i++) save.gear[i] = rules.GearCount((GearKind)i);
         return save;
     }
 
-    public void Apply(VaultProgress vault, HeistSortRules rules, ClueRules clues, PlaceProgress place, CaseFile caseFile)
+    public void Apply(HeistSortRules rules, PlaceProgress place, CaseFile caseFile)
     {
-        place.Restore(placeBeaten);
-        caseFile.Restore(placeClueTiers);
-        vault.Restore(heist, stage, turns);
         rules.Restore(balance, gear);
-        clues.Restore(clueSeed, clueCycle, clueSymbols, clueTiers);
+        place.Restore(placeBeaten, vaultCracked);
+        caseFile.Restore(placeClueTiers);
     }
 
     public string ToJson() => JsonUtility.ToJson(this);

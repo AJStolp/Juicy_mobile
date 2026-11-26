@@ -13,6 +13,7 @@ MonoBehaviour:
   m_Name: City
   m_EditorClassIdentifier: Assembly-CSharp::PlaceData
   PlaceName: City
+  ClueSeed: 7
   Levels:
   - Name: City 1
     Hint: 
@@ -73,4 +74,15 @@ MonoBehaviour:
     Cash: 4
     DropEvery: 0.62
     FallSpeed: 2.1
+    MaxChutes: 4
+  Boss:
+    Name: The Vault
+    Hint: Sort to turn the door, then crack it.
+    Target: 90
+    Misses: 12
+    Seed: 7
+    Dynamite: 22
+    Cash: 5
+    DropEvery: 0.58
+    FallSpeed: 2.2
     MaxChutes: 4

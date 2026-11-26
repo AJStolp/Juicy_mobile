@@ -72,6 +72,7 @@ public class AlleyLevelHud : MonoBehaviour
         director.AttemptStarted += ShowBanner;
         director.MapOpened += Hide;
         director.RevealOpened += HideForReveal;
+        director.FinaleStarted += HideForFinale;
         ShowBanner(director.Level);
         if (director.UsesMap) Hide();
     }
@@ -97,9 +98,13 @@ public class AlleyLevelHud : MonoBehaviour
         director.AttemptStarted -= ShowBanner;
         director.MapOpened -= Hide;
         director.RevealOpened -= HideForReveal;
+        director.FinaleStarted -= HideForFinale;
     }
 
     void HideForReveal(int level, Clue clue) => Hide();
+
+    // The keypad's case file takes the top of the screen during the finale.
+    void HideForFinale(VaultFinale finale) => Hide();
 
     void Update()
     {
@@ -123,12 +128,26 @@ public class AlleyLevelHud : MonoBehaviour
 
     void ShowResult(LevelRules level)
     {
+        content.SetActive(true);
         bool won = level.State == LevelState.Won;
-        titleText.text = won ? "LEVEL WON" : "TOO MANY MISSES";
         titleText.color = won ? Win : Fail;
-        detailText.text = won
-            ? level.MissesLeft + (level.MissesLeft == 1 ? " MISS TO SPARE" : " MISSES TO SPARE")
-            : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
+        if (director.IsBoss && won)
+        {
+            titleText.text = "VAULT CRACKED";
+            detailText.text = "+$" + AlleyChuteDirector.VaultPrize.ToString("#,0");
+        }
+        else if (director.IsBoss && level.FailedAtFinale)
+        {
+            titleText.text = "ALARM TRIPPED";
+            detailText.text = director.Finale.Step + " OF " + director.Finale.Count + " CLUES ENTERED";
+        }
+        else
+        {
+            titleText.text = won ? "LEVEL WON" : "TOO MANY MISSES";
+            detailText.text = won
+                ? level.MissesLeft + (level.MissesLeft == 1 ? " MISS TO SPARE" : " MISSES TO SPARE")
+                : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
+        }
         retryText.text = won && (director.UsesMap || director.UsesReveal) ? "TAP TO CONTINUE" : "TAP TO TRY AGAIN";
         panel.SetActive(true);
         shownAt = Time.unscaledTime;

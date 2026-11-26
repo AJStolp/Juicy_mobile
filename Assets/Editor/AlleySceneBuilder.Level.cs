@@ -26,6 +26,7 @@ public static partial class AlleySceneBuilder
             new LevelSpec { Name = "City 5", Hint = "", Target = 80, Misses = 8, Seed = 5, Dynamite = 16, Cash = 4, DropEvery = 0.7f, FallSpeed = 2f, MaxChutes = 4 },
             new LevelSpec { Name = "City 6", Hint = "", Target = 85, Misses = 8, Seed = 6, Dynamite = 20, Cash = 4, DropEvery = 0.62f, FallSpeed = 2.1f, MaxChutes = 4 },
         };
+        city.Boss = new LevelSpec { Name = "The Vault", Hint = "Sort to turn the door, then crack it.", Target = 90, Misses = 12, Seed = 7, Dynamite = 22, Cash = 5, DropEvery = 0.58f, FallSpeed = 2.2f, MaxChutes = 4 };
         AssetDatabase.CreateAsset(city, CityPath);
         AssetDatabase.SaveAssets();
         return city;

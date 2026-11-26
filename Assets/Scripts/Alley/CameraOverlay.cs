@@ -21,6 +21,7 @@ public class CameraOverlay
     public const int LayerHud = 0;
     public const int LayerMap = 1;
     public const int LayerReveal = 2;
+    public const int LayerFinale = 3;
 
     public CameraOverlay(Camera camera, Material panelMaterial, float distance, int layer)
     {

@@ -88,7 +88,7 @@ public class AlleyReactions : MonoBehaviour
     // has no celebration clip yet, so both get the heavy push.
     void OnStageLocked(int stage) => PushHeavy();
 
-    void OnCracked(int heist)
+    void OnCracked()
     {
         PushHeavy();
         JuicyAudioHooks.Getaway();

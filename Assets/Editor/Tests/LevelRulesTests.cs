@@ -248,3 +248,39 @@ public class LevelSpecTests
         UnityEngine.Object.DestroyImmediate(place);
     }
 }
+
+public class BossLevelTests
+{
+    [Test]
+    public void ABossHoldsItsWinForTheFinale()
+    {
+        var rules = new HeistSortRules();
+        var level = new LevelRules(rules, new LevelSpec { Target = 3, Misses = 2 }) { HoldsWin = true };
+        int met = 0;
+        level.TargetMet += _ => met++;
+        for (int i = 0; i < 3; i++) rules.Catch(ItemKind.Gem, i % 2, i % 2);
+        Assert.AreEqual(1, met);
+        Assert.IsTrue(level.TargetReached);
+        Assert.AreEqual(LevelState.Playing, level.State);
+        rules.Miss(ItemKind.Gem);
+        rules.Miss(ItemKind.Gem);
+        rules.Miss(ItemKind.Gem);
+        Assert.AreEqual(LevelState.Playing, level.State, "after the target, misses no longer fail it");
+        level.Finish(true);
+        Assert.AreEqual(LevelState.Won, level.State);
+        Assert.IsFalse(level.FailedAtFinale);
+    }
+
+    [Test]
+    public void ATrippedAlarmFailsTheBossAtTheFinale()
+    {
+        var rules = new HeistSortRules();
+        var level = new LevelRules(rules, new LevelSpec { Target = 1, Misses = 2 }) { HoldsWin = true };
+        level.Finish(false);
+        Assert.AreEqual(LevelState.Playing, level.State, "no finale before the target");
+        rules.Catch(ItemKind.Gem, 0, 0);
+        level.Finish(false);
+        Assert.AreEqual(LevelState.Failed, level.State);
+        Assert.IsTrue(level.FailedAtFinale);
+    }
+}
