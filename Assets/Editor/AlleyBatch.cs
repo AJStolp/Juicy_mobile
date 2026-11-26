@@ -221,6 +221,8 @@ public static class AlleyBatch
     static int mapWait;
     static float mapWaitTime;
     static float mapGiveUpAt;
+    static int mapLivesBefore;
+    static double mapCashBefore;
     static readonly System.Text.StringBuilder mapLog = new System.Text.StringBuilder();
     static bool mapOk;
     static int mapErrors;
@@ -506,11 +508,71 @@ public static class AlleyBatch
             {
                 var door = UnityEngine.Object.FindAnyObjectByType<AlleyVaultDoor>();
                 MapExpect(director.Vault.Stage == 0 && door.LockedShown() == 0, "the next attempt starts on a fresh door (" + door.LockedShown() + " stages shown locked)");
+                MapStep(20, 10);
+                return;
+            }
+            case 20:
+                // Lives and the fail offer, on City 1 which is now playing.
+                if (director.Level.Playing)
+                {
+                    mapLivesBefore = director.LivesLeft;
+                    mapCashBefore = director.Rules.Balance;
+                    while (director.Level.Playing) director.Rules.Miss(ItemKind.Gem);
+                    return;
+                }
+                if (!hud.ShowingResult) return;
+                AlleySceneBuilder.Capture("/tmp/juicy-fail-offer.png");
+                MapExpect(director.CanKeepGoing && director.KeepGoingPrice == AlleyChuteDirector.KeepGoingBasePrice, "a fail offers to keep going for $5,000");
+                MapExpect(hud.KeepGoing() && director.Level.Playing && !director.Paused, "keeping going carries the attempt on");
+                MapExpect(director.Rules.Balance == mapCashBefore - AlleyChuteDirector.KeepGoingBasePrice && director.LivesLeft == mapLivesBefore,
+                    "it costs the cash and no life");
+                MapStep(21, 10);
+                return;
+            case 21:
+                if (director.Level.Playing)
+                {
+                    while (director.Level.Playing) director.Rules.Miss(ItemKind.Gem);
+                    return;
+                }
+                if (!hud.ShowingResult) return;
+                MapExpect(director.KeepGoingPrice == 2 * AlleyChuteDirector.KeepGoingBasePrice, "the second offer in one attempt costs double");
+                hud.TryAgain();
+                MapExpect(director.LivesLeft == mapLivesBefore - 1 && director.Level.Playing, "trying again costs a life and starts over");
+                mapGiveUpAt = UnityEngine.Time.time + 60f;
+                MapStep(22, 10);
+                return;
+            case 22:
+                // Spend every life: fail, try again, until the map refuses.
+                if (director.LivesLeft == 0 && map.Showing)
+                {
+                    MapStep(23);
+                    return;
+                }
+                if (director.Level.Playing && !director.Paused)
+                {
+                    while (director.Level.Playing) director.Rules.Miss(ItemKind.Gem);
+                    return;
+                }
+                if (hud.ShowingResult) hud.TryAgain();
+                if (UnityEngine.Time.time > mapGiveUpAt) MapAbort("lives never ran out");
+                return;
+            case 23:
+                MapExpect(!map.Choose(0) && map.OutOfLivesShowing, "with no lives a level will not start, and the refill shows");
+                MapStep(24, 5);
+                return;
+            case 24:
+            {
+                AlleySceneBuilder.Capture("/tmp/juicy-out-of-lives.png");
+                double cash = director.Rules.Balance;
+                MapExpect(map.Refill() && director.LivesLeft == Lives.Max && director.Rules.Balance == cash - AlleyChuteDirector.RefillPrice,
+                    "a refill fills every life for $15,000");
+                var savedLives = HeistSave.FromJson(UnityEngine.PlayerPrefs.GetString(SaveKey, ""));
+                MapExpect(savedLives != null && savedLives.lives == Lives.Max, "the save holds the lives");
                 UnityEngine.Application.logMessageReceived -= CountMapError;
                 MapExpect(mapErrors == 0, "no errors logged during play (" + mapErrors + (mapErrors > 0 ? ", first: " + mapFirstError : "") + ")");
                 System.IO.File.WriteAllText(MapReport, (mapOk ? "PASS" : "FAIL") + " map check\n" + mapLog +
                     "stills /tmp/juicy-title.png /tmp/juicy-settings.png /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win,vault-open,vault-cracked}.png " +
-                    "/tmp/juicy-reveal-{covered,half,done,smudged}.png /tmp/juicy-finale.png /tmp/juicy-vault-cracked.png\n");
+                    "/tmp/juicy-reveal-{covered,half,done,smudged}.png /tmp/juicy-finale.png /tmp/juicy-vault-cracked.png /tmp/juicy-fail-offer.png /tmp/juicy-out-of-lives.png\n");
                 SessionState.SetInt(MapStepKey, 90);
                 EditorApplication.isPlaying = false;
                 return;

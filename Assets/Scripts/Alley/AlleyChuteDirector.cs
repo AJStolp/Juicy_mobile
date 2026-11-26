@@ -61,6 +61,27 @@ public class AlleyChuteDirector : MonoBehaviour
     public LevelRules Level { get; private set; }
     public PlaceProgress Progress { get; private set; }
     public CaseFile CaseFile { get; private set; }
+    public Lives Lives { get; private set; } = new Lives();
+
+    // A failed attempt can be kept going with more gems, for cash earned in
+    // play; the price doubles each time in the same attempt. Leaving a failed
+    // attempt any other way costs a life. A full refill of lives also costs
+    // cash. Prices are the lead's starting call (T-038), to tune.
+    public const int KeepGoingGems = 5;
+    public const double KeepGoingBasePrice = 5000d;
+    public const double RefillPrice = 15000d;
+
+    // The clock, in Unix seconds; checks can replace it.
+    public System.Func<long> Clock = () => System.DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+    public long Now => Clock();
+    public int LivesLeft => Lives.Count(Now);
+    public event System.Action AttemptResumed;
+    // The life a failed attempt took, until the player keeps it going (which
+    // gives it back) or leaves. Taken at the fail, so closing the game on the
+    // fail panel cannot dodge it.
+    bool failPending;
+    // The level whose street was cleared, so its items in the air go back to it.
+    LevelRules clearedLevel;
     public PlaceData Place => place;
     public int LevelIndex => levelIndex;
     // True while the vault (the place's boss) is being played.
@@ -138,7 +159,11 @@ public class AlleyChuteDirector : MonoBehaviour
         // Bot runs keep their own save and start each run fresh.
         if (autoPlay) PlayerPrefs.DeleteKey(BotSaveKey);
         HeistSave saved = HeistSave.FromJson(PlayerPrefs.GetString(CurrentSaveKey, ""));
-        if (saved != null) saved.Apply(Rules, Progress, CaseFile);
+        if (saved != null)
+        {
+            saved.Apply(Rules, Progress, CaseFile);
+            Lives = saved.LoadLives();
+        }
         Rules.GearChanged += (_, __) => SaveNow();
         Rules.Sorted += TurnVault;
         levelIndex = Progress.Next;
@@ -164,31 +189,73 @@ public class AlleyChuteDirector : MonoBehaviour
     // Leaves play for the map. Nothing falls until a level is picked.
     public void OpenMap()
     {
+        Concede();
         Paused = true;
         MapOpened?.Invoke();
     }
 
-    // Starts a fresh attempt at the level (or the vault). A fail costs only
-    // the attempt: cash and gear carry over.
-    public void Retry()
+    public double KeepGoingPrice => KeepGoingBasePrice * System.Math.Pow(2, Level != null ? Level.Continues : 0);
+
+    // A failed attempt (not a tripped vault alarm) that cash can keep going.
+    public bool CanKeepGoing => failPending && Level.State == LevelState.Failed && !Level.FailedAtFinale && Rules.Balance >= KeepGoingPrice;
+
+    public bool KeepGoing()
     {
-        if (IsBoss) PlayBoss();
-        else Play(levelIndex);
+        if (!CanKeepGoing || !Rules.Spend(KeepGoingPrice)) return false;
+        Level.Continue(KeepGoingGems);
+        failPending = false;
+        Lives.Give(Now);
+        spawnTimer = 0f;
+        Paused = false;
+        SaveNow();
+        AttemptResumed?.Invoke();
+        return true;
     }
 
-    // Starts a fresh attempt at one of the place's levels.
-    public void Play(int index)
+    // Leaving a failed attempt without keeping it going: its life, taken at
+    // the fail, stays gone.
+    void Concede()
     {
+        failPending = false;
+    }
+
+    public bool RefillLives()
+    {
+        if (LivesLeft >= Lives.Max || !Rules.Spend(RefillPrice)) return false;
+        Lives.Fill();
+        SaveNow();
+        return true;
+    }
+
+    // Starts a fresh attempt at the level (or the vault). A fail costs only
+    // the attempt and a life: cash and gear carry over. With no lives left
+    // it goes to the map, which offers the refill.
+    public void Retry()
+    {
+        Concede();
+        bool started = IsBoss ? PlayBoss() : Play(levelIndex);
+        if (!started && UsesMap) OpenMap();
+    }
+
+    // Starts a fresh attempt at one of the place's levels. False with no
+    // lives left (auto play, which tunes levels, never runs out).
+    public bool Play(int index)
+    {
+        Concede();
+        if (LivesLeft <= 0 && !autoPlay) return false;
         IsBoss = false;
         levelIndex = Mathf.Clamp(index, 0, place.Count - 1);
         Restart();
+        return true;
     }
 
     // Starts a fresh attempt at the vault. Only once every level is beaten,
     // or on auto play, which tunes it.
     public bool PlayBoss()
     {
+        Concede();
         if (!Progress.VaultOpen && !autoPlay) return false;
+        if (LivesLeft <= 0 && !autoPlay) return false;
         IsBoss = true;
         Restart();
         return true;
@@ -260,6 +327,8 @@ public class AlleyChuteDirector : MonoBehaviour
     void EndAttempt()
     {
         Paused = true;
+        failPending = Level.State == LevelState.Failed;
+        if (failPending) Lives.Lose(Now);
         if (Level.State == LevelState.Won && !IsBoss)
         {
             Progress.Won(levelIndex);
@@ -273,7 +342,7 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public void SaveNow()
     {
-        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Rules, Progress, CaseFile).ToJson());
+        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Rules, Progress, CaseFile, Lives, Now).ToJson());
         PlayerPrefs.Save();
     }
 
@@ -299,6 +368,9 @@ public class AlleyChuteDirector : MonoBehaviour
         if (autoPlay) TickBot();
         TickItems(dt);
         FlushClear();
+        // A safety net: an attempt with nothing left to fall and nothing on
+        // the street can never be decided, so it ends as a fail.
+        if (Level.Playing && !Level.TargetReached && !Level.CanDrop && live.Count == 0) Level.Exhaust();
         if (!Level.Playing) EndAttempt();
     }
 
@@ -379,6 +451,9 @@ public class AlleyChuteDirector : MonoBehaviour
         float drop = Level.Spec.FallSpeed * dt;
         for (int i = live.Count - 1; i >= 0; i--)
         {
+            // Once the attempt ends, nothing more is played this frame: what
+            // is still moving goes back to the level when the street clears.
+            if (!Level.Playing) break;
             AlleyItem item = live[i];
             switch (item.State)
             {
@@ -423,6 +498,7 @@ public class AlleyChuteDirector : MonoBehaviour
     // that loop is done.
     void ClearLive()
     {
+        clearedLevel = Level;
         clearQueued = true;
         spawnTimer = -1f;
     }
@@ -431,7 +507,13 @@ public class AlleyChuteDirector : MonoBehaviour
     {
         if (!clearQueued) return;
         clearQueued = false;
-        for (int i = live.Count - 1; i >= 0; i--) Recycle(i);
+        for (int i = live.Count - 1; i >= 0; i--)
+        {
+            // Anything not yet scored goes back to its level to fall again.
+            AlleyItem item = live[i];
+            if (clearedLevel != null && item.State != AlleyItem.Phase.Popping) clearedLevel.Return(item.Kind, item.ColorId);
+            Recycle(i);
+        }
     }
 
     // Plays for verification: sorts most items correctly, trashes bombs,

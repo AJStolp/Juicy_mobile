@@ -1,9 +1,9 @@
 using System;
 using UnityEngine;
 
-// What carries over between sittings: the cash, the gear, how far through
-// the place the player is (levels beaten, the vault cracked) and the clues
-// found. Each level and vault attempt starts fresh by design.
+// What carries over between sittings: the cash, the gear, the lives (and
+// when the next one refills), how far through the place the player is
+// (levels beaten, the vault cracked) and the clues found. Each level and vault attempt starts fresh by design.
 [Serializable]
 public class HeistSave
 {
@@ -12,11 +12,15 @@ public class HeistSave
     public int placeBeaten;
     public bool vaultCracked;
     public int[] placeClueTiers = new int[0];
+    public int lives = Lives.Max;
+    public long livesSince;
 
-    public static HeistSave Capture(HeistSortRules rules, PlaceProgress place, CaseFile caseFile)
+    public static HeistSave Capture(HeistSortRules rules, PlaceProgress place, CaseFile caseFile, Lives lifeCount, long now)
     {
         var save = new HeistSave
         {
+            lives = lifeCount.StoredFor(now),
+            livesSince = lifeCount.SinceFor(now),
             balance = rules.Balance,
             placeBeaten = place.Beaten,
             vaultCracked = place.VaultCracked,
@@ -25,6 +29,8 @@ public class HeistSave
         for (int i = 0; i < save.gear.Length; i++) save.gear[i] = rules.GearCount((GearKind)i);
         return save;
     }
+
+    public Lives LoadLives() => new Lives(lives, livesSince);
 
     public void Apply(HeistSortRules rules, PlaceProgress place, CaseFile caseFile)
     {

@@ -187,6 +187,15 @@ public class HeistSortRules
         CashWon?.Invoke(amount, Balance);
     }
 
+    // Pays for something with cash earned in play. False, and nothing
+    // spent, when there is not enough.
+    public bool Spend(double amount)
+    {
+        if (amount <= 0d || Balance < amount) return false;
+        Balance -= amount;
+        return true;
+    }
+
     public void Restore(double balance, int[] savedGear)
     {
         Balance = balance;

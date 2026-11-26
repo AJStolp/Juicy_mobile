@@ -15,12 +15,17 @@ public class HeistSaveTests
         place.CrackVault();
         var caseFile = new CaseFile(2, 7);
         caseFile.Record(1, 2);
-        string json = HeistSave.Capture(rules, place, caseFile).ToJson();
+        var lives = new Lives();
+        lives.Lose(1000);
+        string json = HeistSave.Capture(rules, place, caseFile, lives, 1000).ToJson();
 
         var rules2 = new HeistSortRules();
         var place2 = new PlaceProgress(2);
         var caseFile2 = new CaseFile(2, 7);
-        HeistSave.FromJson(json).Apply(rules2, place2, caseFile2);
+        HeistSave save = HeistSave.FromJson(json);
+        save.Apply(rules2, place2, caseFile2);
+        Assert.AreEqual(Lives.Max - 1, save.LoadLives().Count(1000));
+        Assert.AreEqual(Lives.Max, save.LoadLives().Count(1000 + Lives.RefillSeconds));
         Assert.AreEqual(2, place2.Beaten);
         Assert.IsTrue(place2.VaultCracked);
         Assert.IsFalse(caseFile2.Found(0));
@@ -37,7 +42,9 @@ public class HeistSaveTests
         var rules = new HeistSortRules();
         var place = new PlaceProgress(6);
         var caseFile = new CaseFile(6, 7);
-        HeistSave.FromJson(old).Apply(rules, place, caseFile);
+        HeistSave save = HeistSave.FromJson(old);
+        save.Apply(rules, place, caseFile);
+        Assert.AreEqual(Lives.Max, save.LoadLives().Count(0), "a save from before lives starts full");
         Assert.AreEqual(777d, rules.Balance);
         Assert.AreEqual(3, place.Beaten);
         Assert.IsFalse(place.VaultCracked);

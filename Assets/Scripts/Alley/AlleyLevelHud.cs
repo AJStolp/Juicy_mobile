@@ -27,6 +27,14 @@ public class AlleyLevelHud : MonoBehaviour
     TextMeshPro titleText;
     TextMeshPro detailText;
     TextMeshPro retryText;
+    // The fail panel's choices: keep going for cash, try again, or the map.
+    GameObject failButtons;
+    Renderer keepGoingHit;
+    Renderer tryAgainHit;
+    Renderer mapHit;
+    TextMeshPro keepGoingText;
+    TextMeshPro livesNote;
+    static readonly Color ButtonBack = new Color(1f, 1f, 1f, 0.12f);
     TextMeshPro bannerText;
     TextMeshPro hintText;
     float bannerUntil;
@@ -58,10 +66,21 @@ public class AlleyLevelHud : MonoBehaviour
 
         panel = new GameObject("Result_Panel");
         panel.transform.SetParent(root, false);
-        overlay.Quad(panel.transform, "Back", new Vector2(0.5f, 0.57f), new Vector2(0.86f, 0.24f), new Color(0.02f, 0.02f, 0.05f, 0.82f), 0.002f);
-        titleText = overlay.Text(panel.transform, "Title", new Vector2(0.5f, 0.64f), new Vector2(0.8f, 0.07f), Win);
-        detailText = overlay.Text(panel.transform, "Detail", new Vector2(0.5f, 0.575f), new Vector2(0.8f, 0.04f), Color.white);
-        retryText = overlay.Text(panel.transform, "Retry", new Vector2(0.5f, 0.505f), new Vector2(0.8f, 0.035f), Neon);
+        overlay.Quad(panel.transform, "Back", new Vector2(0.5f, 0.535f), new Vector2(0.86f, 0.34f), new Color(0.02f, 0.02f, 0.05f, 0.88f), 0.003f);
+        titleText = overlay.Text(panel.transform, "Title", new Vector2(0.5f, 0.655f), new Vector2(0.8f, 0.065f), Win);
+        detailText = overlay.Text(panel.transform, "Detail", new Vector2(0.5f, 0.6f), new Vector2(0.8f, 0.035f), Color.white);
+        retryText = overlay.Text(panel.transform, "Retry", new Vector2(0.5f, 0.52f), new Vector2(0.8f, 0.035f), Neon);
+        failButtons = new GameObject("Fail_Buttons");
+        failButtons.transform.SetParent(panel.transform, false);
+        Transform buttons = failButtons.transform;
+        keepGoingHit = overlay.Quad(buttons, "Keep_Going", new Vector2(0.5f, 0.535f), new Vector2(0.76f, 0.06f), Neon, 0.002f);
+        keepGoingText = overlay.Text(buttons, "Keep_Going_Label", new Vector2(0.5f, 0.535f), new Vector2(0.72f, 0.024f), Color.black);
+        keepGoingText.outlineWidth = 0f;
+        tryAgainHit = overlay.Quad(buttons, "Try_Again", new Vector2(0.31f, 0.455f), new Vector2(0.37f, 0.055f), ButtonBack, 0.002f);
+        overlay.Text(buttons, "Try_Again_Label", new Vector2(0.31f, 0.455f), new Vector2(0.32f, 0.028f), Color.white).text = "TRY AGAIN";
+        mapHit = overlay.Quad(buttons, "Map", new Vector2(0.69f, 0.455f), new Vector2(0.37f, 0.055f), ButtonBack, 0.002f);
+        overlay.Text(buttons, "Map_Label", new Vector2(0.69f, 0.455f), new Vector2(0.32f, 0.028f), Color.white).text = "MAP";
+        livesNote = overlay.Text(buttons, "Lives_Note", new Vector2(0.5f, 0.395f), new Vector2(0.76f, 0.022f), new Color(1f, 1f, 1f, 0.75f));
         panel.SetActive(false);
 
         // The level's name, and its hint when it brings in something new.
@@ -73,6 +92,7 @@ public class AlleyLevelHud : MonoBehaviour
         director.MapOpened += Hide;
         director.RevealOpened += HideForReveal;
         director.FinaleStarted += HideForFinale;
+        director.AttemptResumed += OnResumed;
         ShowBanner(director.Level);
         if (director.UsesMap) Hide();
     }
@@ -99,7 +119,11 @@ public class AlleyLevelHud : MonoBehaviour
         director.MapOpened -= Hide;
         director.RevealOpened -= HideForReveal;
         director.FinaleStarted -= HideForFinale;
+        director.AttemptResumed -= OnResumed;
     }
+
+    // Kept going: the panel goes and play carries on where it stopped.
+    void OnResumed() => panel.SetActive(false);
 
     void HideForReveal(int level, Clue clue) => Hide();
 
@@ -152,18 +176,72 @@ public class AlleyLevelHud : MonoBehaviour
                 : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
         }
         retryText.text = won && (director.UsesMap || director.UsesReveal) ? "TAP TO CONTINUE" : "TAP TO TRY AGAIN";
+        // A fail on the map's flow offers its choices; a win, or play
+        // without the map (auto play), still taps on through.
+        bool choices = !won && director.UsesMap;
+        retryText.gameObject.SetActive(!choices);
+        failButtons.SetActive(choices);
+        if (choices) RefreshChoices();
         panel.SetActive(true);
         shownAt = Time.unscaledTime;
     }
 
-    // A tap anywhere: back to the map after a win, or try again after a fail.
+    bool CanOfferKeepGoing => !director.Level.FailedAtFinale;
+
+    void RefreshChoices()
+    {
+        bool offer = CanOfferKeepGoing;
+        keepGoingHit.gameObject.SetActive(offer);
+        keepGoingText.gameObject.SetActive(offer);
+        if (offer)
+        {
+            bool afford = director.CanKeepGoing;
+            keepGoingText.text = (afford ? "KEEP GOING  +" : "NEED ") + (afford ? AlleyChuteDirector.KeepGoingGems + " GEMS  $" : "$") +
+                director.KeepGoingPrice.ToString("#,0") + (afford ? "" : " TO KEEP GOING");
+            overlay.Tint(keepGoingHit, afford ? Neon : new Color(0.4f, 0.4f, 0.42f));
+        }
+        int lives = director.LivesLeft;
+        livesNote.text = "LIVES " + lives + (director.CanKeepGoing ? ". KEEP GOING RETURNS 1" : "");
+    }
+
+    // After a win, a tap anywhere goes on. After a fail, the buttons:
+    // keep going, try again, or back to the map.
     void TickRetry()
     {
         // The swipe that ended the attempt must not also start the next one.
         if (director.AutoPlay || Time.unscaledTime < shownAt + 0.6f) return;
         Pointer pointer = Pointer.current;
         if (pointer == null || !pointer.press.wasReleasedThisFrame) return;
-        Continue();
+        if (!failButtons.activeSelf)
+        {
+            Continue();
+            return;
+        }
+        Vector2 tap = pointer.position.ReadValue();
+        if (keepGoingHit.gameObject.activeSelf && overlay.ScreenRect(keepGoingHit).Contains(tap)) KeepGoing();
+        else if (overlay.ScreenRect(tryAgainHit).Contains(tap)) TryAgain();
+        else if (overlay.ScreenRect(mapHit).Contains(tap)) ToMap();
+    }
+
+    public bool KeepGoing()
+    {
+        if (!ShowingResult || !director.KeepGoing()) return false;
+        JuicyAudioHooks.Cash();
+        return true;
+    }
+
+    public void TryAgain()
+    {
+        if (!ShowingResult) return;
+        JuicyAudioHooks.Tap();
+        director.Retry();
+    }
+
+    public void ToMap()
+    {
+        if (!ShowingResult) return;
+        JuicyAudioHooks.Tap();
+        director.OpenMap();
     }
 
     public void Continue()
