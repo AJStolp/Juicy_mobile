@@ -123,8 +123,10 @@ public class AlleyMap : MonoBehaviour
     {
         if (!Showing) return;
         if (pulse != null) pulse.localScale = pulseBase * (1f + 0.06f * Mathf.Sin(Time.unscaledTime * 6f));
-        // Settings sit on top and take the taps while open.
-        if (Time.unscaledTime < shownAt + TapGuard || (settings != null && settings.Showing)) return;
+        // Settings sit on top and take the taps while open, including the one
+        // that closes them, whichever script reads it first.
+        if (Time.unscaledTime < shownAt + TapGuard) return;
+        if (settings != null && (settings.Showing || Time.unscaledTime < settings.ClosedAt + TapGuard)) return;
         Pointer pointer = Pointer.current;
         if (pointer == null || !pointer.press.wasReleasedThisFrame) return;
         Vector2 tap = pointer.position.ReadValue();

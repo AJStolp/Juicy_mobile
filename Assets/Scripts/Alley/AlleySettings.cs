@@ -14,8 +14,10 @@ public class AlleySettings : MonoBehaviour
     const float TapGuard = 0.25f;
 
     [SerializeField] Material panelMaterial;
-    [Tooltip("The public privacy policy page. The row hides while this is empty.")]
-    [SerializeField] string privacyUrl = "";
+    // The public privacy policy page (docs/privacy-policy.md, once hosted).
+    // The row hides while this is empty. Kept in code so a scene rebuild
+    // never loses it.
+    public const string PrivacyUrl = "";
 
     CameraOverlay overlay;
     GameObject content;
@@ -26,6 +28,8 @@ public class AlleySettings : MonoBehaviour
     float shownAt;
 
     public bool Showing => content != null && content.activeSelf;
+    // When settings last closed, so the map ignores the closing tap.
+    public float ClosedAt { get; private set; } = -1f;
 
     public void Configure(Material material)
     {
@@ -50,6 +54,7 @@ public class AlleySettings : MonoBehaviour
     public void Close()
     {
         if (content != null) content.SetActive(false);
+        ClosedAt = Time.unscaledTime;
     }
 
     public void ToggleSound()
@@ -79,7 +84,7 @@ public class AlleySettings : MonoBehaviour
         soundHit = Row(root, "Sound", 0.62f, "SOUND", AudioPrefs.SoundOn);
         musicHit = Row(root, "Music", 0.52f, "MUSIC", AudioPrefs.MusicOn);
         privacyHit = null;
-        if (privacyUrl.Length > 0) privacyHit = Button(root, "Privacy", 0.42f, "PRIVACY POLICY", Color.white);
+        if (PrivacyUrl.Length > 0) privacyHit = Button(root, "Privacy", 0.42f, "PRIVACY POLICY", Color.white);
         closeHit = Button(root, "Close", 0.28f, "CLOSE", Neon);
     }
 
@@ -111,7 +116,7 @@ public class AlleySettings : MonoBehaviour
         Vector2 tap = pointer.position.ReadValue();
         if (overlay.ScreenRect(soundHit).Contains(tap)) ToggleSound();
         else if (overlay.ScreenRect(musicHit).Contains(tap)) ToggleMusic();
-        else if (privacyHit != null && overlay.ScreenRect(privacyHit).Contains(tap)) Application.OpenURL(privacyUrl);
+        else if (privacyHit != null && overlay.ScreenRect(privacyHit).Contains(tap)) Application.OpenURL(PrivacyUrl);
         else if (overlay.ScreenRect(closeHit).Contains(tap))
         {
             JuicyAudioHooks.Tap();
