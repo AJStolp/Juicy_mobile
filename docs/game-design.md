@@ -10,7 +10,8 @@ Decided 2026-11-25, with the open questions tracked on the board as T-026. This 
 - **Every level builds up to the boss.** Winning a level earns one clue about that place's vault. How well the level was played sets how clearly the clue shows (the streak rule, under Clue hack).
 - **The player reveals the clue at the end of the level** with a small hands on mechanic that changes from level to level: rubbing grime off a wall, shining a torch, a scratch off, tapping to break rocks. This replaces the clue trip after every leg.
 - **Clues go on the crime board,** with photos and red string, telling the story of the heist.
-- **An attempt takes 3 to 5 minutes.** Harder levels can take hours or days to beat, over many attempts, as in Candy Crush.
+- **A level is won by sorting enough of a limited number of gems** (T-028, Anthony 2026-11-26). The first level drops 90 gems and asks for 75. Run out first and the level is failed, with how many gems short shown. The gems fall in the same color order on every attempt, so a fail is the player's doing, as in the top sort games (`research-color-sort-market.md`).
+- **Early attempts take about 75 seconds,** per the research, and later levels grow toward 3 to 5 minutes. Harder levels can take hours or days to beat, over many attempts, as in Candy Crush.
 - **Failing a level costs only that attempt.** Never an earned clue, never map progress.
 - **Why:** the alley carries every mechanic at once today. On a map, mechanics can arrive one level at a time, and the boss brings them together.
 
@@ -23,7 +24,6 @@ Decided 2026-11-25, with the open questions tracked on the board as T-026. This 
 
 **Still open** (on T-026):
 
-- What wins or fails a level: the goal and the limit.
 - Which mechanic arrives at which level, and which stay out of the city.
 - The boss. Assumed to be the vault, with the door stages and the clue hack as its finale.
 - The pacing of a place, in place of the multi day vault. Assumed: the first city's boss cracks in one sitting.
@@ -127,8 +127,8 @@ Nothing is saved today. A multi day vault needs saved progress (stage, progress 
 
 ## Next to build
 
-Settle T-026's open questions, starting with what wins or fails a level, then prototype one city level ending in a clue reveal. Building more on the clue trip after every leg (T-020) is on hold until then.
+The launch plan on the board (T-030): levels as data, the city's 6 levels and boss, the map screen, the end of level clue reveal, then lives, sound, ads, purchases and analytics, ahead of a soft launch. Building more on the clue trip after every leg (T-020) is on hold until then.
 
 ## TLDR
 
-The game is moving to a world map: places like the city, a beach or a volcano, each 6 levels and then a harder boss level. Winning a level earns a clue about the vault, revealed by the player at the end of the level and kept on the crime board; failing costs only that attempt. Attempts take 3 to 5 minutes, and the aim is winning all the time but only just, with honest near misses and nothing rigged. What wins a level, the boss, and the pacing of a place are open on T-026. The sort has two chests, and letters go up into the raccoon's sack rather than a third chest. The vault door shows progress: four bolts pop, two rings turn, the wheel spins, the door opens; its multi day pacing is under review. In the clue hack the player taps the clues back in order at the vault keypad, climbing a reward ladder; it is earned and never bought, and is skill rather than chance. Busts grind the current part back while finished stages are kept. Money comes from gear and post bail, never from random rewards. A wager on an attempt is an idea on hold, with limits. Next: settle T-026's open questions, then prototype one city level ending in a clue reveal.
+The game is moving to a world map: places like the city, a beach or a volcano, each 6 levels and then a harder boss level. Winning a level earns a clue about the vault, revealed by the player at the end of the level and kept on the crime board; failing costs only that attempt. Attempts take 3 to 5 minutes, and the aim is winning all the time but only just, with honest near misses and nothing rigged. A level is won by sorting 75 of a limited 90 gems that fall in the same order every attempt, and early attempts take about 75 seconds. The boss and the pacing of a place are open on T-026. The sort has two chests, and letters go up into the raccoon's sack rather than a third chest. The vault door shows progress: four bolts pop, two rings turn, the wheel spins, the door opens; its multi day pacing is under review. In the clue hack the player taps the clues back in order at the vault keypad, climbing a reward ladder; it is earned and never bought, and is skill rather than chance. Busts grind the current part back while finished stages are kept. Money comes from gear and post bail, never from random rewards. A wager on an attempt is an idea on hold, with limits. Next: the launch plan on T-030.
