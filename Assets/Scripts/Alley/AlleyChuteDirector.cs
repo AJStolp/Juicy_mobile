@@ -21,8 +21,6 @@ public class AlleyChuteDirector : MonoBehaviour
     [SerializeField] AlleyBin[] bins = new AlleyBin[2];
     [SerializeField] AlleyItem itemTemplate;
     [SerializeField] int poolSize = 14;
-    [SerializeField] float spawnInterval = 0.85f;
-    [SerializeField] float fallSpeed = 1.6f;
     [SerializeField] float groundY = 0.1f;
     [Tooltip("Shortest swipe that counts, as a fraction of screen height.")]
     [SerializeField] float minSwipe = 0.04f;
@@ -30,8 +28,9 @@ public class AlleyChuteDirector : MonoBehaviour
     [SerializeField] float pickRadius = 0.12f;
     [SerializeField] float flightTime = 0.32f;
     [SerializeField] float trashTime = 0.45f;
-    [Tooltip("Sets the order the level's gems fall in, the same on every attempt.")]
-    [SerializeField] int levelSeed = LevelRules.DefaultSeed;
+    [SerializeField] PlaceData place;
+    [Tooltip("Which of the place's levels plays, counting from 0.")]
+    [SerializeField] int levelIndex;
     [SerializeField] bool autoPlay;
     [Range(0f, 1f)] [SerializeField] float autoMistakes = 0.12f;
 
@@ -53,6 +52,8 @@ public class AlleyChuteDirector : MonoBehaviour
     public VaultProgress Vault { get; private set; }
     public ClueRules Clues { get; private set; }
     public LevelRules Level { get; private set; }
+    public PlaceData Place => place;
+    public int LevelIndex => levelIndex;
     public event System.Action<LevelRules> AttemptStarted;
     public event System.Action<LevelRules> AttemptEnded;
     public bool AutoPlay => autoPlay;
@@ -74,11 +75,12 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public static Color GemColor(int colorId) => colorId == 0 ? Ruby : Sapphire;
 
-    public void Configure(Transform[] dropPoints, AlleyBin[] colorBins, AlleyItem template)
+    public void Configure(Transform[] dropPoints, AlleyBin[] colorBins, AlleyItem template, PlaceData levels)
     {
         drops = dropPoints;
         bins = colorBins;
         itemTemplate = template;
+        place = levels;
     }
 
     void Awake()
@@ -113,8 +115,12 @@ public class AlleyChuteDirector : MonoBehaviour
 
     // Starts a fresh attempt at the level. A fail costs only the attempt:
     // cash and gear carry over.
-    public void Retry()
+    public void Retry() => Play(levelIndex);
+
+    // Starts a fresh attempt at one of the place's levels.
+    public void Play(int index)
     {
+        levelIndex = Mathf.Clamp(index, 0, place.Count - 1);
         Rules.StartAttempt();
         BeginLevel();
         spawnTimer = 0f;
@@ -125,7 +131,10 @@ public class AlleyChuteDirector : MonoBehaviour
     void BeginLevel()
     {
         if (Level != null) Level.Dispose();
-        Level = new LevelRules(Rules, seed: levelSeed);
+        if (place == null) throw new System.InvalidOperationException("The chute director has no place to play; rebuild the scene with Wire Gameplay");
+        LevelSpec spec = place.Level(levelIndex);
+        Rules.MaxChutes = Mathf.Clamp(spec.MaxChutes, 1, drops.Length);
+        Level = new LevelRules(Rules, spec);
     }
 
     void EndAttempt()
@@ -171,7 +180,7 @@ public class AlleyChuteDirector : MonoBehaviour
     void TickSpawn(float dt)
     {
         spawnTimer += dt;
-        if (spawnTimer < spawnInterval || idle.Count == 0) return;
+        if (spawnTimer < Level.Spec.DropEvery || idle.Count == 0) return;
         if (!Level.Drop(out int colorId, out float chuteRoll)) return;
         spawnTimer = 0f;
 
@@ -241,7 +250,7 @@ public class AlleyChuteDirector : MonoBehaviour
 
     void TickItems(float dt)
     {
-        float drop = fallSpeed * dt;
+        float drop = Level.Spec.FallSpeed * dt;
         for (int i = live.Count - 1; i >= 0; i--)
         {
             AlleyItem item = live[i];

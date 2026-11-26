@@ -2,23 +2,20 @@ using System;
 
 public enum LevelState { Playing, Won, Failed }
 
-// What wins or fails one level, with no presentation. A level drops a fixed
-// number of gems and asks for a number of them sorted correctly. It fails the
-// moment the target can no longer be reached: once more gems are lost than
-// the level has to spare. The gems come in the same color order on every
-// attempt, set by the level's seed, so a fail is the player's doing and not
-// the draw's.
+// What wins or fails one level, with no presentation. A level (LevelSpec)
+// drops a fixed number of gems and asks for a number of them sorted
+// correctly. It fails the moment the target can no longer be reached: once
+// more gems are lost than the level has to spare. The gems come in the same
+// color order on every attempt, set by the level's seed, so a fail is the
+// player's doing and not the draw's.
 public class LevelRules
 {
-    public const int DefaultTarget = 75;
-    public const int DefaultGems = 90;
-    public const int DefaultSeed = 1;
-
     readonly HeistSortRules rules;
     readonly Random order;
 
-    public int Target { get; }
-    public int GemLimit { get; }
+    public LevelSpec Spec { get; }
+    public int Target => Spec.Target;
+    public int GemLimit => Spec.Gems;
 
     public LevelState State { get; private set; } = LevelState.Playing;
     public int Sorted { get; private set; }
@@ -28,12 +25,11 @@ public class LevelRules
 
     public event Action<LevelRules> Ended;
 
-    public LevelRules(HeistSortRules sortRules, int target = DefaultTarget, int gems = DefaultGems, int seed = DefaultSeed)
+    public LevelRules(HeistSortRules sortRules, LevelSpec spec)
     {
         rules = sortRules;
-        Target = target;
-        GemLimit = gems;
-        order = new Random(seed);
+        Spec = spec;
+        order = new Random(spec.Seed);
         rules.HeatOn = false;
         rules.Sorted += OnSorted;
         rules.Missed += OnLost;

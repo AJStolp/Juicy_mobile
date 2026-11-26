@@ -707,7 +707,7 @@ public static partial class AlleySceneBuilder
         AlleyBin right = BuildBin(chests, 1, new Vector3(0.72f, 0f, -0.3f), 180f - 28f, diamond);
 
         AlleyChuteDirector director = directorObject.AddComponent<AlleyChuteDirector>();
-        director.Configure(drops, new[] { left, right }, template);
+        director.Configure(drops, new[] { left, right }, template, CityPlace());
 
         GameObject raccoon = GameObject.Find("Raccoon_Mascot");
         var heatLights = new List<LightAnimator>();
