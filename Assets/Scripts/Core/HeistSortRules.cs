@@ -49,6 +49,11 @@ public class HeistSortRules
     public event Action<char, string, int> LetterBanked;
     public event Action<string, double> WordCompleted;
     public event Action<GearKind, int> GearChanged;
+    public event Action<ItemKind> Missed;
+    public event Action<ItemKind> Trashed;
+
+    // Off for a level goal that is not about heat: mistakes then raise none.
+    public bool HeatOn = true;
 
     readonly int[] craft = new int[Sides];
     readonly float[] vat = new float[Sides];
@@ -185,6 +190,7 @@ public class HeistSortRules
         if (kind == ItemKind.Gold) GrantGold();
         else if (kind == ItemKind.Gem) Fault(ErrorHeat);
         else if (kind == ItemKind.Bomb) AddGear(GearKind.Dynamite, 1);
+        Trashed?.Invoke(kind);
     }
 
     public int GearCap(GearKind kind) => kind == GearKind.Dynamite ? DynamiteCap : int.MaxValue;
@@ -217,6 +223,27 @@ public class HeistSortRules
     public void Miss(ItemKind kind)
     {
         if (kind == ItemKind.Gem) Fault(ErrorHeat);
+        Missed?.Invoke(kind);
+    }
+
+    // A fresh attempt at a level: heat, streak, vats, legs and the word start
+    // over. Cash and gear are kept, since a fail costs only the attempt.
+    public void StartAttempt()
+    {
+        for (int i = 0; i < Sides; i++)
+        {
+            craft[i] = 0;
+            vat[i] = 0f;
+        }
+        Leg = 1;
+        VatFills = 0;
+        legBestTier = 0;
+        LastLegBestTier = 0;
+        cooling = false;
+        BreakStreak();
+        SetHeat(0f);
+        wordIndex = 0;
+        LoadWord();
     }
 
     void FillVat(int side)
@@ -274,6 +301,7 @@ public class HeistSortRules
 
     void Fault(float amount)
     {
+        if (!HeatOn) return;
         cooling = false;
         SetHeat(Mathf.Min(MaxHeat, Heat + amount));
         if (Heat >= MaxHeat) Bust();

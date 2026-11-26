@@ -95,24 +95,34 @@ public static class AlleyBatch
         System.IO.File.WriteAllText("/tmp/juicy-vault-previews.txt", report);
     }
 
-    // Renders the word sign over the vault with HEIST part spelled.
+    // Renders the word sign over the vault with HEIST part spelled. The sign is
+    // off while levels drop no letters, so it is turned on just for the shot.
     public static void WordSignPreviews()
     {
         OpenAlley();
         AlleySceneBuilder.WireGameplayInScene();
-        var sign = UnityEngine.Object.FindAnyObjectByType<AlleyWordSign>();
+        var sign = UnityEngine.Object.FindAnyObjectByType<AlleyWordSign>(UnityEngine.FindObjectsInactive.Include);
+        sign.gameObject.SetActive(true);
         sign.Show("HEIST", i => i == 0 || i == 2);
         AlleySceneBuilder.Capture("/tmp/juicy-word-vault.png");
         sign.Show("HEIST", _ => false);
+        sign.gameObject.SetActive(false);
         EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene());
     }
 
     // Plays the bot run headless. Leave off -quit: AlleyBotRun exits the
     // editor once the report is written.
     //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.Bot
-    public static void Bot()
+    public static void Bot() => StartBot(false);
+
+    // Only the six films and the home still, without the numbers.
+    public static void BotFilm() => StartBot(true);
+
+    static void StartBot(bool filmOnly)
     {
         OpenAlley();
+        SessionState.SetBool("JuicyBotFilmOnly", filmOnly);
+        System.IO.File.Delete("/tmp/juicy-level-home.png");
         System.IO.File.Delete("/tmp/juicy-bot.txt");
         SessionState.SetBool("JuicyBotBatch", true);
         System.IO.File.WriteAllText("/tmp/juicy-alley-bot-run", "batch");

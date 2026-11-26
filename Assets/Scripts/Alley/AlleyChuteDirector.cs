@@ -2,10 +2,12 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
-// Runs the heist sort in the alley. Items fall from the open chutes; the
-// player swipes left or right to send one into that side's color chest, or up
-// to trash it. HeistSortRules decides what each outcome is worth, and every
-// vat fill turns the vault. Vault, cash and gear are saved between sittings.
+// Runs one level of the heist sort in the alley. Gems fall from the open
+// chutes; the player swipes left or right to send one into that side's color
+// chest, or up to trash it. HeistSortRules decides what each outcome is worth,
+// and LevelRules decides when the attempt is won or failed. Only gems fall:
+// the other items, the vault turning and the clue hack wait for the levels
+// that bring them back (T-026). Cash and gear are saved between sittings.
 public class AlleyChuteDirector : MonoBehaviour
 {
     // Chutes open centre first: Drop_02, Drop_03, Drop_01, then Drop_04.
@@ -27,6 +29,7 @@ public class AlleyChuteDirector : MonoBehaviour
     [SerializeField] float pickRadius = 0.12f;
     [SerializeField] float flightTime = 0.32f;
     [SerializeField] float trashTime = 0.45f;
+    [SerializeField] LevelGoal goal = LevelGoal.Heat;
     [SerializeField] bool autoPlay;
     [Range(0f, 1f)] [SerializeField] float autoMistakes = 0.12f;
 
@@ -40,7 +43,6 @@ public class AlleyChuteDirector : MonoBehaviour
 
     const string SaveKey = "Juicy.HeistSave";
     const string BotSaveKey = "Juicy.HeistSave.Bot";
-    const int TurnsPerVatFill = 1;
 
     bool paused;
     bool clearQueued;
@@ -48,6 +50,10 @@ public class AlleyChuteDirector : MonoBehaviour
     public HeistSortRules Rules { get; private set; }
     public VaultProgress Vault { get; private set; }
     public ClueRules Clues { get; private set; }
+    public LevelRules Level { get; private set; }
+    public LevelGoal Goal => goal;
+    public event System.Action<LevelRules> AttemptStarted;
+    public event System.Action<LevelRules> AttemptEnded;
     public bool AutoPlay => autoPlay;
     public float AutoMistakes { get => autoMistakes; set => autoMistakes = Mathf.Clamp01(value); }
 
@@ -79,9 +85,10 @@ public class AlleyChuteDirector : MonoBehaviour
         Rules = new HeistSortRules();
         Vault = new VaultProgress();
         Clues = new ClueRules(Vault, System.Environment.TickCount);
+        Rules.BombChance = 0f;
+        Rules.LetterChance = 0f;
+        Rules.GoldChance = 0f;
         Rules.Busted += ClearLive;
-        Rules.Busted += Vault.Bust;
-        Rules.VatFilled += _ => Vault.Turn(TurnsPerVatFill);
         view = Camera.main;
         itemTemplate.gameObject.SetActive(false);
         for (int i = 0; i < poolSize; i++)
@@ -104,6 +111,32 @@ public class AlleyChuteDirector : MonoBehaviour
         Vault.RolledBack += (_, __) => SaveNow();
         Vault.Cracked += _ => SaveNow();
         Rules.GearChanged += (_, __) => SaveNow();
+        BeginLevel(goal);
+    }
+
+    // Starts a fresh attempt at the level with the given goal. A fail costs
+    // only the attempt: cash and gear carry over.
+    public void Retry(LevelGoal next)
+    {
+        Rules.StartAttempt();
+        BeginLevel(next);
+        spawnTimer = 0f;
+        Paused = false;
+        AttemptStarted?.Invoke(Level);
+    }
+
+    void BeginLevel(LevelGoal next)
+    {
+        if (Level != null) Level.Dispose();
+        goal = next;
+        Level = new LevelRules(Rules, goal);
+    }
+
+    void EndAttempt()
+    {
+        Paused = true;
+        SaveNow();
+        AttemptEnded?.Invoke(Level);
     }
 
     string CurrentSaveKey => autoPlay ? BotSaveKey : SaveKey;
@@ -130,18 +163,21 @@ public class AlleyChuteDirector : MonoBehaviour
         FlushClear();
         if (paused) return;
         Rules.Tick(dt);
+        Level.Tick(dt);
         TickSpawn(dt);
         TickInput();
         if (autoPlay) TickBot();
         TickItems(dt);
         FlushClear();
+        if (!Level.Playing) EndAttempt();
     }
 
     void TickSpawn(float dt)
     {
         spawnTimer += dt;
-        if (spawnTimer < spawnInterval || idle.Count == 0) return;
+        if (spawnTimer < spawnInterval || idle.Count == 0 || !Level.CanDrop) return;
         spawnTimer = 0f;
+        Level.Drop();
 
         AlleyItem item = idle.Dequeue();
         ItemKind kind = Rules.KindForRoll(Random.value);
