@@ -5,13 +5,13 @@ using UnityEngine;
 using UnityEngine.LowLevel;
 using UnityEngine.PlayerLoop;
 
-// Verification run for the level. Touch /tmp/juicy-alley-bot-run and the open
-// editor enters Play mode with the director on auto play. It plays level
-// attempts in two parts, then writes /tmp/juicy-bot.txt and stops:
-//   1. Numbers: Attempts tries by a careful bot (10% mistakes) and a sloppy
-//      one (30%), at 4x. Each attempt's result, gems to spare or short, and
-//      length in game seconds.
-//   2. Film: one won and one failed attempt at 1x with a fixed 30 frames per
+// Verification run for the place's levels. Touch /tmp/juicy-alley-bot-run and
+// the open editor enters Play mode with the director on auto play. It plays
+// level attempts in two parts, then writes /tmp/juicy-bot.txt and stops:
+//   1. Numbers: for every level of the place, Attempts tries by a careful bot
+//      (10% mistakes) and a sloppy one (30%), at 4x. Each attempt's result,
+//      gems to spare or short, and length in game seconds.
+//   2. Film: one won and one failed attempt of the first level at 1x with a fixed 30 frames per
 //      game second. The last FilmSeconds of the attempt and the result panel
 //      after it land in /tmp/juicy-level-film/<won|failed>/ as numbered jpgs,
 //      ready for ffmpeg.
@@ -26,7 +26,7 @@ public static class AlleyBotRun
     const string FilmRoot = "/tmp/juicy-level-film";
     const string HomeStill = "/tmp/juicy-level-home.png";
     const float Speed = 4f;
-    const int Attempts = 8;
+    const int Attempts = 6;
     const float Careful = 0.1f;
     const float Sloppy = 0.3f;
     const float FilmWinMistakes = 0.05f;
@@ -39,6 +39,7 @@ public static class AlleyBotRun
 
     struct Run
     {
+        public int Level;
         public float Mistakes;
         public bool Film;
         public bool WantWin;
@@ -125,8 +126,11 @@ public static class AlleyBotRun
         bool filmOnly = SessionState.GetBool("JuicyBotFilmOnly", false);
         if (!filmOnly)
         {
-            for (int i = 0; i < Attempts; i++) plan.Add(new Run { Mistakes = Careful });
-            for (int i = 0; i < Attempts; i++) plan.Add(new Run { Mistakes = Sloppy });
+            for (int level = 0; level < director.Place.Count; level++)
+            {
+                for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Careful });
+                for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Sloppy });
+            }
         }
         plan.Add(new Run { Mistakes = FilmWinMistakes, Film = true, WantWin = true });
         plan.Add(new Run { Mistakes = FilmFailMistakes, Film = true, WantWin = false });
@@ -157,14 +161,14 @@ public static class AlleyBotRun
             Time.timeScale = Speed;
         }
         attemptStart = Time.time;
-        director.Retry();
+        director.Play(run.Level);
     }
 
     static void Ended(AlleyChuteDirector director, LevelRules level)
     {
         Run run = plan[current];
         bool won = level.State == LevelState.Won;
-        string line = "mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
+        string line = level.Spec.Name + " mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
             " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost +
             (won ? " misses to spare " + level.MissesLeft : " short " + level.ShortBy) +
             " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0");
@@ -282,14 +286,17 @@ public static class AlleyBotRun
     static string Describe(AlleyChuteDirector director, float now)
     {
         var log = new System.Text.StringBuilder();
-        var level = director.Level;
-        log.AppendLine("level target " + level.Target + " of " + level.GemLimit + " gems, seed " + LevelRules.DefaultSeed);
-        log.AppendLine("numbers at " + Speed + "x, " + Attempts + " attempts per bot; film at 1x, " + FilmFps + " fps");
+        log.AppendLine("place " + director.Place.PlaceName + ", " + director.Place.Count + " levels:");
+        foreach (LevelSpec spec in director.Place.Levels)
+            log.AppendLine("  " + spec.Name + ": target " + spec.Target + " of " + spec.Gems + " gems, seed " + spec.Seed + ", a gem every " +
+                spec.DropEvery.ToString("0.00") + "s, falling " + spec.FallSpeed.ToString("0.0") + " m/s, up to " + spec.MaxChutes + " chutes");
+        log.AppendLine("numbers at " + Speed + "x, " + Attempts + " attempts per bot per level; film of the first level at 1x, " + FilmFps + " fps");
         log.AppendLine("game seconds " + now.ToString("0") + "; spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses);
         log.AppendLine();
         log.AppendLine("summary:");
-        foreach (float mistakes in new[] { Careful, Sloppy })
-            log.AppendLine("  " + Summary(mistakes));
+        foreach (LevelSpec spec in director.Place.Levels)
+            foreach (float mistakes in new[] { Careful, Sloppy })
+                log.AppendLine("  " + Summary(spec.Name, mistakes));
         log.AppendLine();
         log.AppendLine("attempts:");
         foreach (string line in lines) log.AppendLine("  " + line);
@@ -302,9 +309,9 @@ public static class AlleyBotRun
         return log.ToString();
     }
 
-    static string Summary(float mistakes)
+    static string Summary(string level, float mistakes)
     {
-        string key = "mistakes " + mistakes.ToString("0.00") + " ";
+        string key = level + " mistakes " + mistakes.ToString("0.00") + " ";
         int wins = 0, total = 0;
         foreach (string line in lines)
         {

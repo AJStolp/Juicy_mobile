@@ -16,7 +16,7 @@ public class LevelRulesTests
     public void WinsWhenTheTargetIsSorted()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, target: 10, gems: 20);
+        var level = new LevelRules(rules, new LevelSpec { Target = 10, Gems = 20 });
         LevelRules ended = null;
         level.Ended += l => ended = l;
         for (int i = 0; i < 10; i++) level.Drop(out _, out _);
@@ -33,7 +33,7 @@ public class LevelRulesTests
     public void StopsDroppingAtTheLimit()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, target: 8, gems: 10);
+        var level = new LevelRules(rules, new LevelSpec { Target = 8, Gems = 10 });
         int drops = 0;
         while (level.Drop(out _, out _)) drops++;
         Assert.AreEqual(10, drops);
@@ -45,7 +45,7 @@ public class LevelRulesTests
     public void FailsTheMomentTheTargetCanNoLongerBeReached()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, target: 75, gems: 90);
+        var level = new LevelRules(rules, new LevelSpec { Target = 75, Gems = 90 });
         Correct(rules, 20);
         Wrong(rules, 10);
         rules.Trash(ItemKind.Gem);
@@ -62,7 +62,7 @@ public class LevelRulesTests
     public void WinningWithEveryMissUnusedLeavesThemAllToSpare()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, target: 5, gems: 9);
+        var level = new LevelRules(rules, new LevelSpec { Target = 5, Gems = 9 });
         Wrong(rules, 1);
         Correct(rules, 5);
         Assert.AreEqual(LevelState.Won, level.State);
@@ -73,7 +73,7 @@ public class LevelRulesTests
     public void RaisesNoHeat()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, target: 30, gems: 999);
+        var level = new LevelRules(rules, new LevelSpec { Target = 30, Gems = 999 });
         Wrong(rules, 10);
         rules.Miss(ItemKind.Gem);
         Assert.AreEqual(0f, rules.Heat);
@@ -84,13 +84,13 @@ public class LevelRulesTests
     public void GemsComeInTheSameOrderOnEveryAttempt()
     {
         var rules = new HeistSortRules();
-        var first = new LevelRules(rules, gems: 40, seed: 7);
+        var first = new LevelRules(rules, new LevelSpec { Gems = 40, Seed = 7 });
         var colors = new int[40];
         var rolls = new float[40];
         for (int i = 0; i < 40; i++) first.Drop(out colors[i], out rolls[i]);
         first.Dispose();
         rules.StartAttempt();
-        var again = new LevelRules(rules, gems: 40, seed: 7);
+        var again = new LevelRules(rules, new LevelSpec { Gems = 40, Seed = 7 });
         for (int i = 0; i < 40; i++)
         {
             again.Drop(out int color, out float roll);
@@ -102,8 +102,8 @@ public class LevelRulesTests
     [Test]
     public void TheOrderUsesBothColorsAndChangesWithTheSeed()
     {
-        var a = new LevelRules(new HeistSortRules(), gems: 40, seed: 1);
-        var b = new LevelRules(new HeistSortRules(), gems: 40, seed: 2);
+        var a = new LevelRules(new HeistSortRules(), new LevelSpec { Gems = 40, Seed = 1 });
+        var b = new LevelRules(new HeistSortRules(), new LevelSpec { Gems = 40, Seed = 2 });
         int reds = 0, differ = 0;
         for (int i = 0; i < 40; i++)
         {
@@ -122,11 +122,11 @@ public class LevelRulesTests
     public void AFinishedLevelIgnoresTheNextAttempt()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, target: 2);
+        var level = new LevelRules(rules, new LevelSpec { Target = 2 });
         Correct(rules, 2);
         level.Dispose();
         rules.StartAttempt();
-        var next = new LevelRules(rules, target: 2);
+        var next = new LevelRules(rules, new LevelSpec { Target = 2 });
         Correct(rules, 1);
         Assert.AreEqual(2, level.Sorted);
         Assert.AreEqual(1, next.Sorted);
@@ -150,5 +150,34 @@ public class LevelRulesTests
         Assert.AreEqual(0, rules.VatFills);
         Assert.AreEqual(0f, rules.Vat(0));
         Assert.AreEqual(0, rules.Craft(1));
+    }
+}
+
+public class LevelSpecTests
+{
+    [Test]
+    public void LevelsPlayTheirOwnNumbers()
+    {
+        var rules = new HeistSortRules();
+        var easy = new LevelRules(rules, new LevelSpec { Target = 5, Gems = 8 });
+        Assert.AreEqual(5, easy.Target);
+        Assert.AreEqual(8, easy.GemLimit);
+        easy.Dispose();
+        var hard = new LevelRules(rules, new LevelSpec { Target = 9, Gems = 10 });
+        int drops = 0;
+        while (hard.Drop(out _, out _)) drops++;
+        Assert.AreEqual(10, drops);
+        Assert.AreEqual(1, hard.Spec.Slack);
+    }
+
+    [Test]
+    public void APlaceClampsItsLevelIndex()
+    {
+        var place = UnityEngine.ScriptableObject.CreateInstance<PlaceData>();
+        place.Levels = new[] { new LevelSpec { Name = "A" }, new LevelSpec { Name = "B" } };
+        Assert.AreEqual("A", place.Level(-1).Name);
+        Assert.AreEqual("B", place.Level(1).Name);
+        Assert.AreEqual("B", place.Level(7).Name);
+        UnityEngine.Object.DestroyImmediate(place);
     }
 }

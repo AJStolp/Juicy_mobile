@@ -4,6 +4,28 @@ using UnityEngine;
 // The level's goal display and result panel.
 public static partial class AlleySceneBuilder
 {
+    const string LevelRoot = "Assets/Levels";
+    const string CityPath = LevelRoot + "/City.asset";
+
+    // The city's levels. Made once with starting numbers; after that the
+    // asset is the place to tune them, and rebuilding the scene keeps them.
+    public static PlaceData CityPlace()
+    {
+        PlaceData city = AssetDatabase.LoadAssetAtPath<PlaceData>(CityPath);
+        if (city != null) return city;
+        if (!AssetDatabase.IsValidFolder(LevelRoot)) AssetDatabase.CreateFolder("Assets", "Levels");
+        city = ScriptableObject.CreateInstance<PlaceData>();
+        city.PlaceName = "City";
+        city.Levels = new[]
+        {
+            new LevelSpec { Name = "City 1", Target = 75, Gems = 90, Seed = 1, DropEvery = 0.85f, FallSpeed = 1.6f, MaxChutes = 4 },
+            new LevelSpec { Name = "City 2", Target = 80, Gems = 94, Seed = 2, DropEvery = 0.75f, FallSpeed = 1.8f, MaxChutes = 4 },
+        };
+        AssetDatabase.CreateAsset(city, CityPath);
+        AssetDatabase.SaveAssets();
+        return city;
+    }
+
     static void BuildLevelHud(AlleyChuteDirector director)
     {
         Camera camera = Camera.main;
