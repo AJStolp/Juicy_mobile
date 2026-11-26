@@ -48,7 +48,7 @@ MonoBehaviour:
   - Name: City 4
     Hint: Cash counts double in either chest.
     Target: 75
-    Misses: 10
+    Misses: 11
     Seed: 4
     Dynamite: 10
     Cash: 3
@@ -58,7 +58,7 @@ MonoBehaviour:
   - Name: City 5
     Hint: 
     Target: 80
-    Misses: 8
+    Misses: 6
     Seed: 5
     Dynamite: 16
     Cash: 4
@@ -79,7 +79,7 @@ MonoBehaviour:
     Name: The Vault
     Hint: Sort to turn the door, then crack it.
     Target: 90
-    Misses: 9
+    Misses: 8
     Seed: 7
     Dynamite: 22
     Cash: 5
