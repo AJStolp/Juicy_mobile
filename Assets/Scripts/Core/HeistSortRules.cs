@@ -42,7 +42,6 @@ public class HeistSortRules
     public event Action<float> HeatChanged;
     public event Action Busted;
     public event Action<double, double> CashWon;
-    public event Action<double, double> CashSpent;
     public event Action<int, int> StreakChanged;
     public event Action<char, string, int> LetterBanked;
     public event Action<string, double> WordCompleted;
@@ -194,7 +193,6 @@ public class HeistSortRules
     {
         if (amount <= 0d || Balance < amount) return false;
         Balance -= amount;
-        CashSpent?.Invoke(amount, Balance);
         return true;
     }
 

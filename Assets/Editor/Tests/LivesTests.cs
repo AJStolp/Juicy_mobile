@@ -38,6 +38,27 @@ public class LivesTests
     }
 
     [Test]
+    public void AKeptGoingAttemptGetsItsLifeBack()
+    {
+        var lives = new Lives(Lives.Max, 0);
+        lives.Lose(100);
+        lives.Give(150);
+        Assert.AreEqual(Lives.Max, lives.Count(150));
+        lives.Give(160);
+        Assert.AreEqual(Lives.Max, lives.Count(160), "never past full");
+    }
+
+    [Test]
+    public void AClockMovedBackRestartsTheWaitInsteadOfStoppingIt()
+    {
+        var lives = new Lives(Lives.Max, 0);
+        lives.Lose(10000);
+        lives.Lose(5000);
+        Assert.AreEqual(Lives.Max - 2, lives.Count(5000));
+        Assert.AreEqual(Lives.Max - 1, lives.Count(5000 + Lives.RefillSeconds));
+    }
+
+    [Test]
     public void FillAndRestoreRoundTrip()
     {
         var lives = new Lives(Lives.Max, 0);
@@ -69,6 +90,29 @@ public class KeepGoingTests
         Assert.AreEqual(4, level.MissesLeft, "one over, plus five more gems");
         Assert.AreEqual(1, level.Continues);
         Assert.IsFalse(level.Continue(5), "only a failed level continues");
+    }
+
+    [Test]
+    public void GemsClearedAtTheFailFallAgainSoAKeptGoingAttemptAlwaysEnds()
+    {
+        var rules = new HeistSortRules();
+        var level = new LevelRules(rules, new LevelSpec { Target = 3, Misses = 0 });
+        level.Drop(out LevelRules.Item a);
+        level.Drop(out LevelRules.Item b);
+        level.Drop(out LevelRules.Item inTheAir);
+        rules.Catch(ItemKind.Gem, a.ColorId, a.ColorId);
+        rules.Miss(ItemKind.Gem);
+        Assert.AreEqual(LevelState.Failed, level.State);
+        level.Return(inTheAir.Kind, inTheAir.ColorId);
+        level.Continue(2);
+        int dropped = 0;
+        while (level.Drop(out _)) dropped++;
+        Assert.AreEqual(3, dropped, "the gem in the air plus the two extra");
+        Assert.AreEqual(1, level.MissesLeft, "one over the limit, plus two more gems");
+        rules.Miss(ItemKind.Gem);
+        Assert.AreEqual(LevelState.Playing, level.State);
+        rules.Miss(ItemKind.Gem);
+        Assert.AreEqual(LevelState.Failed, level.State, "settled before anything is left hanging");
     }
 
     [Test]

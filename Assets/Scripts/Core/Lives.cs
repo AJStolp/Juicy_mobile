@@ -49,10 +49,20 @@ public class Lives
         stored = Max;
     }
 
+    // Gives back a life taken for an attempt the player then kept going.
+    public void Give(long now)
+    {
+        Settle(now);
+        stored = Math.Min(Max, stored + 1);
+    }
+
     // Banks refills that have come in, keeping the part of the next one
     // already waited.
     void Settle(long now)
     {
+        // A clock moved backward restarts the wait from now rather than
+        // stopping refills until it catches up.
+        if (now < since) since = now;
         if (stored >= Max) return;
         long gained = Math.Max(0, now - since) / RefillSeconds;
         stored = (int)Math.Min(Max, stored + gained);

@@ -202,6 +202,14 @@ public class LevelRules
         else if (Room < 0) End(LevelState.Failed);
     }
 
+    // An item cleared from the street before it was played (the attempt
+    // ended with it in the air) goes back to fall again, after everything
+    // still to come, so it is never lost uncounted.
+    public void Return(ItemKind kind, int colorId)
+    {
+        order.Add(new Item { Kind = kind, ColorId = kind == ItemKind.Gem ? colorId : 0, ChuteRoll = 0.5f });
+    }
+
     // Keeps a failed attempt going with `extraGems` more gems to sort, added
     // after everything still to fall. Not after a tripped alarm.
     public bool Continue(int extraGems)

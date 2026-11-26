@@ -201,7 +201,7 @@ public class AlleyLevelHud : MonoBehaviour
             overlay.Tint(keepGoingHit, afford ? Neon : new Color(0.4f, 0.4f, 0.42f));
         }
         int lives = director.LivesLeft;
-        livesNote.text = "LEAVING COSTS 1 LIFE. LIVES " + lives;
+        livesNote.text = "LIVES " + lives + (director.CanKeepGoing ? ". KEEP GOING RETURNS 1" : "");
     }
 
     // After a win, a tap anywhere goes on. After a fail, the buttons:

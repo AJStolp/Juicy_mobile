@@ -76,8 +76,12 @@ public class AlleyChuteDirector : MonoBehaviour
     public long Now => Clock();
     public int LivesLeft => Lives.Count(Now);
     public event System.Action AttemptResumed;
-    public event System.Action LivesChanged;
+    // The life a failed attempt took, until the player keeps it going (which
+    // gives it back) or leaves. Taken at the fail, so closing the game on the
+    // fail panel cannot dodge it.
     bool failPending;
+    // The level whose street was cleared, so its items in the air go back to it.
+    LevelRules clearedLevel;
     public PlaceData Place => place;
     public int LevelIndex => levelIndex;
     // True while the vault (the place's boss) is being played.
@@ -200,6 +204,7 @@ public class AlleyChuteDirector : MonoBehaviour
         if (!CanKeepGoing || !Rules.Spend(KeepGoingPrice)) return false;
         Level.Continue(KeepGoingGems);
         failPending = false;
+        Lives.Give(Now);
         spawnTimer = 0f;
         Paused = false;
         SaveNow();
@@ -207,14 +212,11 @@ public class AlleyChuteDirector : MonoBehaviour
         return true;
     }
 
-    // Leaving a failed attempt without keeping it going costs its life.
+    // Leaving a failed attempt without keeping it going: its life, taken at
+    // the fail, stays gone.
     void Concede()
     {
-        if (!failPending) return;
         failPending = false;
-        Lives.Lose(Now);
-        SaveNow();
-        LivesChanged?.Invoke();
     }
 
     public bool RefillLives()
@@ -222,7 +224,6 @@ public class AlleyChuteDirector : MonoBehaviour
         if (LivesLeft >= Lives.Max || !Rules.Spend(RefillPrice)) return false;
         Lives.Fill();
         SaveNow();
-        LivesChanged?.Invoke();
         return true;
     }
 
@@ -327,6 +328,7 @@ public class AlleyChuteDirector : MonoBehaviour
     {
         Paused = true;
         failPending = Level.State == LevelState.Failed;
+        if (failPending) Lives.Lose(Now);
         if (Level.State == LevelState.Won && !IsBoss)
         {
             Progress.Won(levelIndex);
@@ -490,6 +492,7 @@ public class AlleyChuteDirector : MonoBehaviour
     // that loop is done.
     void ClearLive()
     {
+        clearedLevel = Level;
         clearQueued = true;
         spawnTimer = -1f;
     }
@@ -498,7 +501,13 @@ public class AlleyChuteDirector : MonoBehaviour
     {
         if (!clearQueued) return;
         clearQueued = false;
-        for (int i = live.Count - 1; i >= 0; i--) Recycle(i);
+        for (int i = live.Count - 1; i >= 0; i--)
+        {
+            // Anything not yet scored goes back to its level to fall again.
+            AlleyItem item = live[i];
+            if (clearedLevel != null && item.State != AlleyItem.Phase.Popping) clearedLevel.Return(item.Kind, item.ColorId);
+            Recycle(i);
+        }
     }
 
     // Plays for verification: sorts most items correctly, trashes bombs,
