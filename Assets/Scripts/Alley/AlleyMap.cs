@@ -38,11 +38,23 @@ public class AlleyMap : MonoBehaviour
     [SerializeField] AlleySettings settings;
 
     CameraOverlay overlay;
+    // The out of lives panel draws in the popup band, above every map label.
+    CameraOverlay popup;
     GameObject content;
     Renderer[] stopHits;
     Renderer vaultHit;
     Renderer switchHit;
     Renderer settingsHit;
+    // Lives and cash along the top, and the panel shown when a level is
+    // tapped with no lives left.
+    TextMeshPro livesText;
+    TextMeshPro cashText;
+    GameObject outOfLives;
+    TextMeshPro nextLifeText;
+    Renderer refillHit;
+    TextMeshPro refillText;
+    Renderer closeLivesHit;
+    float livesShownAt;
     Transform pulse;
     Vector3 pulseBase;
     float shownAt;
@@ -66,6 +78,7 @@ public class AlleyMap : MonoBehaviour
         }
         Camera view = Camera.main;
         overlay = new CameraOverlay(view, panelMaterial, Distance, CameraOverlay.LayerMap);
+        popup = new CameraOverlay(view, panelMaterial, 0.31f, CameraOverlay.LayerSettings);
         transform.SetParent(view.transform, false);
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
@@ -94,6 +107,7 @@ public class AlleyMap : MonoBehaviour
     void Hide()
     {
         if (content != null) content.SetActive(false);
+        if (outOfLives != null) outOfLives.SetActive(false);
     }
 
     public void SetLook(Look next)
@@ -105,6 +119,11 @@ public class AlleyMap : MonoBehaviour
     // Plays the vault once every level is beaten (again after it is cracked).
     public bool ChooseVault()
     {
+        if (director.Progress.VaultOpen && director.LivesLeft <= 0)
+        {
+            ShowOutOfLives();
+            return false;
+        }
         if (!director.PlayBoss()) return false;
         JuicyAudioHooks.Tap();
         return true;
@@ -114,8 +133,12 @@ public class AlleyMap : MonoBehaviour
     public bool Choose(int index)
     {
         if (index < 0 || index >= director.Place.Count || !director.Progress.IsOpen(index)) return false;
+        if (!director.Play(index))
+        {
+            ShowOutOfLives();
+            return false;
+        }
         JuicyAudioHooks.Tap();
-        director.Play(index);
         return true;
     }
 
@@ -127,6 +150,12 @@ public class AlleyMap : MonoBehaviour
         // that closes them, whichever script reads it first.
         if (Time.unscaledTime < shownAt + TapGuard) return;
         if (settings != null && (settings.Showing || Time.unscaledTime < settings.ClosedAt + TapGuard)) return;
+        TickTopBar();
+        if (OutOfLivesShowing)
+        {
+            TickOutOfLives();
+            return;
+        }
         Pointer pointer = Pointer.current;
         if (pointer == null || !pointer.press.wasReleasedThisFrame) return;
         Vector2 tap = pointer.position.ReadValue();
@@ -158,6 +187,86 @@ public class AlleyMap : MonoBehaviour
         if (look == Look.Board) BuildBoard(content.transform);
         else BuildStreets(content.transform);
         BuildSwitch(content.transform);
+        BuildTopBar(content.transform);
+    }
+
+    public bool OutOfLivesShowing => outOfLives != null && outOfLives.activeSelf;
+
+    void BuildTopBar(Transform root)
+    {
+        overlay.Quad(root, "Top_Bar", new Vector2(0.5f, 0.982f), new Vector2(1.2f, 0.036f), new Color(0f, 0f, 0f, 0.75f), 0.0012f);
+        livesText = overlay.Text(root, "Lives", new Vector2(0.27f, 0.982f), new Vector2(0.46f, 0.02f), Color.white);
+        cashText = overlay.Text(root, "Cash", new Vector2(0.78f, 0.982f), new Vector2(0.36f, 0.02f), Neon);
+        TickTopBar();
+        if (outOfLives == null) BuildOutOfLives();
+    }
+
+    // Built once, beside the map's content rather than in it, so a rebuild
+    // of the map never drops it.
+    void BuildOutOfLives()
+    {
+        outOfLives = new GameObject("Out_Of_Lives");
+        outOfLives.transform.SetParent(transform, false);
+        Transform panel = outOfLives.transform;
+        popup.Quad(panel, "Dim", new Vector2(0.5f, 0.5f), new Vector2(1.3f, 1.3f), new Color(0.01f, 0.01f, 0.03f, 0.88f), 0.008f);
+        popup.Quad(panel, "Card", new Vector2(0.5f, 0.52f), new Vector2(0.82f, 0.36f), new Color(0.07f, 0.07f, 0.1f, 1f), 0.006f);
+        TextMeshPro title = popup.Text(panel, "Title", new Vector2(0.5f, 0.64f), new Vector2(0.7f, 0.05f), new Color(1f, 0.3f, 0.3f));
+        title.text = "OUT OF LIVES";
+        nextLifeText = popup.Text(panel, "Next", new Vector2(0.5f, 0.58f), new Vector2(0.7f, 0.026f), Color.white);
+        refillHit = popup.Quad(panel, "Refill", new Vector2(0.5f, 0.5f), new Vector2(0.7f, 0.06f), Neon, 0.004f);
+        refillText = popup.Text(panel, "Refill_Label", new Vector2(0.5f, 0.5f), new Vector2(0.62f, 0.024f), Color.black);
+        refillText.outlineWidth = 0f;
+        closeLivesHit = popup.Quad(panel, "Close", new Vector2(0.5f, 0.42f), new Vector2(0.7f, 0.055f), new Color(1f, 1f, 1f, 0.12f), 0.004f);
+        popup.Text(panel, "Close_Label", new Vector2(0.5f, 0.42f), new Vector2(0.4f, 0.026f), Color.white).text = "WAIT";
+        outOfLives.SetActive(false);
+    }
+
+    static string Clock(long seconds) => (seconds / 60) + ":" + (seconds % 60).ToString("00");
+
+    void TickTopBar()
+    {
+        if (livesText == null) return;
+        int lives = director.LivesLeft;
+        livesText.text = "LIVES " + lives + (lives < Lives.Max ? "  NEXT " + Clock(director.Lives.NextIn(director.Now)) : "");
+        cashText.text = "$" + director.Rules.Balance.ToString("#,0");
+        if (!OutOfLivesShowing) return;
+        nextLifeText.text = "NEXT LIFE IN " + Clock(director.Lives.NextIn(director.Now));
+        bool afford = director.Rules.Balance >= AlleyChuteDirector.RefillPrice;
+        refillText.text = (afford ? "REFILL ALL  $" : "NEED $") + AlleyChuteDirector.RefillPrice.ToString("#,0") + (afford ? "" : " TO REFILL");
+        popup.Tint(refillHit, afford ? Neon : new Color(0.4f, 0.4f, 0.42f));
+        if (director.LivesLeft > 0) outOfLives.SetActive(false);
+    }
+
+    public void ShowOutOfLives()
+    {
+        if (outOfLives == null) return;
+        outOfLives.SetActive(true);
+        livesShownAt = Time.unscaledTime;
+        JuicyAudioHooks.Failed();
+        TickTopBar();
+    }
+
+    public bool Refill()
+    {
+        if (!director.RefillLives()) return false;
+        JuicyAudioHooks.Cash();
+        outOfLives.SetActive(false);
+        TickTopBar();
+        return true;
+    }
+
+    void TickOutOfLives()
+    {
+        if (Time.unscaledTime < livesShownAt + TapGuard) return;
+        Pointer pointer = Pointer.current;
+        if (pointer == null || !pointer.press.wasReleasedThisFrame) return;
+        Vector2 tap = pointer.position.ReadValue();
+        if (popup.ScreenRect(refillHit).Contains(tap)) Refill();
+        else if (popup.ScreenRect(closeLivesHit).Contains(tap))
+        {
+            JuicyAudioHooks.Tap();
+            outOfLives.SetActive(false);
+        }
     }
 
     // State of a stop, for both looks.

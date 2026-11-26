@@ -35,7 +35,9 @@ public class LevelRules
     public LevelSpec Spec { get; }
     public int Target => Spec.Target;
     public int Drops => order.Count;
-    public int Gems { get; }
+    public int Gems { get; private set; }
+    // How many times this attempt was kept going after a fail.
+    public int Continues { get; private set; }
 
     public LevelState State { get; private set; } = LevelState.Playing;
     public int Sorted { get; private set; }
@@ -198,6 +200,20 @@ public class LevelRules
             TargetMet?.Invoke(this);
         }
         else if (Room < 0) End(LevelState.Failed);
+    }
+
+    // Keeps a failed attempt going with `extraGems` more gems to sort, added
+    // after everything still to fall. Not after a tripped alarm.
+    public bool Continue(int extraGems)
+    {
+        if (State != LevelState.Failed || FailedAtFinale || extraGems <= 0) return false;
+        var random = new Random(Spec.Seed * 7919 + Continues + 1);
+        for (int i = 0; i < extraGems; i++)
+            order.Add(new Item { Kind = ItemKind.Gem, ColorId = random.Next(HeistSortRules.Sides), ChuteRoll = (float)random.NextDouble() });
+        Gems += extraGems;
+        Continues++;
+        State = LevelState.Playing;
+        return true;
     }
 
     // Ends a held win: the vault cracked, or the alarm tripped.
