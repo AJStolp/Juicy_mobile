@@ -180,4 +180,15 @@ public class LevelSpecTests
         Assert.AreEqual("B", place.Level(7).Name);
         UnityEngine.Object.DestroyImmediate(place);
     }
+
+    [Test]
+    public void APlaceWithNoLevelsSaysSo()
+    {
+        var place = UnityEngine.ScriptableObject.CreateInstance<PlaceData>();
+        place.PlaceName = "Beach";
+        place.Levels = new LevelSpec[0];
+        var error = Assert.Throws<System.InvalidOperationException>(() => place.Level(0));
+        StringAssert.Contains("Beach has no levels", error.Message);
+        UnityEngine.Object.DestroyImmediate(place);
+    }
 }

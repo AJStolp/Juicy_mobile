@@ -15,7 +15,6 @@ MonoBehaviour:
   PlaceName: City
   Levels:
   - Name: City 1
-    Boss: 0
     Target: 75
     Gems: 90
     Seed: 1
@@ -23,7 +22,6 @@ MonoBehaviour:
     FallSpeed: 1.6
     MaxChutes: 4
   - Name: City 2
-    Boss: 0
     Target: 80
     Gems: 94
     Seed: 2

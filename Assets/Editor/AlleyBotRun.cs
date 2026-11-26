@@ -168,7 +168,7 @@ public static class AlleyBotRun
     {
         Run run = plan[current];
         bool won = level.State == LevelState.Won;
-        string line = level.Spec.Name + " mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
+        string line = LevelLabel(run.Level, level.Spec) + " mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
             " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost +
             (won ? " misses to spare " + level.MissesLeft : " short " + level.ShortBy) +
             " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0");
@@ -296,7 +296,7 @@ public static class AlleyBotRun
         log.AppendLine("summary:");
         foreach (LevelSpec spec in director.Place.Levels)
             foreach (float mistakes in new[] { Careful, Sloppy })
-                log.AppendLine("  " + Summary(spec.Name, mistakes));
+                log.AppendLine("  " + Summary(LevelLabel(System.Array.IndexOf(director.Place.Levels, spec), spec), mistakes));
         log.AppendLine();
         log.AppendLine("attempts:");
         foreach (string line in lines) log.AppendLine("  " + line);
@@ -308,6 +308,9 @@ public static class AlleyBotRun
         log.AppendLine("errors " + errors + (errors > 0 ? " first: " + firstError : ""));
         return log.ToString();
     }
+
+    // Numbered, so two levels with the same name never share a summary line.
+    static string LevelLabel(int index, LevelSpec spec) => (index + 1) + ". " + spec.Name;
 
     static string Summary(string level, float mistakes)
     {

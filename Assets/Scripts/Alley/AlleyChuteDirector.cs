@@ -131,6 +131,7 @@ public class AlleyChuteDirector : MonoBehaviour
     void BeginLevel()
     {
         if (Level != null) Level.Dispose();
+        if (place == null) throw new System.InvalidOperationException("The chute director has no place to play; rebuild the scene with Wire Gameplay");
         LevelSpec spec = place.Level(levelIndex);
         Rules.MaxChutes = Mathf.Clamp(spec.MaxChutes, 1, drops.Length);
         Level = new LevelRules(Rules, spec);

@@ -6,7 +6,6 @@ using System;
 public class LevelSpec
 {
     public string Name = "Level";
-    public bool Boss;
     [UnityEngine.Tooltip("Correct sorts that win the level.")]
     public int Target = 75;
     [UnityEngine.Tooltip("Gems that fall in all. Running out short of the target fails the level.")]

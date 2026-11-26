@@ -9,5 +9,10 @@ public class PlaceData : ScriptableObject
 
     public int Count => Levels.Length;
 
-    public LevelSpec Level(int index) => Levels[Mathf.Clamp(index, 0, Levels.Length - 1)];
+    public LevelSpec Level(int index)
+    {
+        if (Levels == null || Levels.Length == 0)
+            throw new System.InvalidOperationException("Place " + PlaceName + " has no levels");
+        return Levels[Mathf.Clamp(index, 0, Levels.Length - 1)];
+    }
 }
