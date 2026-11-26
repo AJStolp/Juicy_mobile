@@ -82,6 +82,7 @@ public class AlleyMap : MonoBehaviour
 
     public void Show()
     {
+        JuicyMusic.Play(JuicyMusic.Track.Map);
         Build();
         shownAt = Time.unscaledTime;
     }
@@ -98,12 +99,18 @@ public class AlleyMap : MonoBehaviour
     }
 
     // Plays the vault once every level is beaten (again after it is cracked).
-    public bool ChooseVault() => director.PlayBoss();
+    public bool ChooseVault()
+    {
+        if (!director.PlayBoss()) return false;
+        JuicyAudioHooks.Tap();
+        return true;
+    }
 
     // Plays an open stop. False for a locked one.
     public bool Choose(int index)
     {
         if (index < 0 || index >= director.Place.Count || !director.Progress.IsOpen(index)) return false;
+        JuicyAudioHooks.Tap();
         director.Play(index);
         return true;
     }
@@ -118,6 +125,7 @@ public class AlleyMap : MonoBehaviour
         Vector2 tap = pointer.position.ReadValue();
         if (overlay.ScreenRect(switchHit).Contains(tap))
         {
+            JuicyAudioHooks.Tap();
             SetLook(look == Look.Board ? Look.Streets : Look.Board);
             return;
         }
