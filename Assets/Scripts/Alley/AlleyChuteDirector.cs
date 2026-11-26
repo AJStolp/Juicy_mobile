@@ -59,6 +59,7 @@ public class AlleyChuteDirector : MonoBehaviour
     public ClueRules Clues { get; private set; }
     public LevelRules Level { get; private set; }
     public PlaceProgress Progress { get; private set; }
+    public CaseFile CaseFile { get; private set; }
     public PlaceData Place => place;
     public int LevelIndex => levelIndex;
     public event System.Action<LevelRules> AttemptStarted;
@@ -68,6 +69,10 @@ public class AlleyChuteDirector : MonoBehaviour
     // before any Start reads it.
     public bool UsesMap { get; private set; }
     public event System.Action MapOpened;
+    // True when a clue reveal is in the scene and this is not auto play: a
+    // won level's clue is scratched off before going back to the map.
+    public bool UsesReveal { get; private set; }
+    public event System.Action<int, Clue> RevealOpened;
     public bool AutoPlay => autoPlay;
     public float AutoMistakes { get => autoMistakes; set => autoMistakes = Mathf.Clamp01(value); }
 
@@ -104,6 +109,7 @@ public class AlleyChuteDirector : MonoBehaviour
         Clues = new ClueRules(Vault, System.Environment.TickCount);
         if (place == null) throw new System.InvalidOperationException("The chute director has no place to play; rebuild the scene with Wire Gameplay");
         Progress = new PlaceProgress(place.Count);
+        CaseFile = new CaseFile(place.Count, place.ClueSeed);
         view = Camera.main;
         itemTemplate.gameObject.SetActive(false);
         for (int i = 0; i < poolSize; i++)
@@ -118,10 +124,11 @@ public class AlleyChuteDirector : MonoBehaviour
         if (System.IO.File.Exists("/tmp/juicy-alley-bot")) autoPlay = true;
 #endif
         UsesMap = !autoPlay && FindAnyObjectByType<AlleyMap>() != null;
+        UsesReveal = !autoPlay && FindAnyObjectByType<AlleyClueReveal>() != null;
         // Bot runs keep their own save and start each run fresh.
         if (autoPlay) PlayerPrefs.DeleteKey(BotSaveKey);
         HeistSave saved = HeistSave.FromJson(PlayerPrefs.GetString(CurrentSaveKey, ""));
-        if (saved != null) saved.Apply(Vault, Rules, Clues, Progress);
+        if (saved != null) saved.Apply(Vault, Rules, Clues, Progress, CaseFile);
         Vault.Turned += (_, __) => SaveNow();
         Vault.StageLocked += _ => SaveNow();
         Vault.RolledBack += (_, __) => SaveNow();
@@ -129,6 +136,22 @@ public class AlleyChuteDirector : MonoBehaviour
         Rules.GearChanged += (_, __) => SaveNow();
         levelIndex = Progress.Next;
         BeginLevel();
+    }
+
+    // After a win: the clue reveal when there is one, else the map, else
+    // straight into another attempt.
+    public void AfterWin()
+    {
+        if (UsesReveal) OpenReveal();
+        else if (UsesMap) OpenMap();
+        else Retry();
+    }
+
+    // Shows the level just played's clue to scratch off. Nothing falls.
+    public void OpenReveal()
+    {
+        Paused = true;
+        RevealOpened?.Invoke(levelIndex, CaseFile.ClueAt(levelIndex));
     }
 
     // Leaves play for the map. Nothing falls until a level is picked.
@@ -164,7 +187,11 @@ public class AlleyChuteDirector : MonoBehaviour
     void EndAttempt()
     {
         Paused = true;
-        if (Level.State == LevelState.Won) Progress.Won(levelIndex);
+        if (Level.State == LevelState.Won)
+        {
+            Progress.Won(levelIndex);
+            CaseFile.Record(levelIndex, Level.BestTier);
+        }
         SaveNow();
         AttemptEnded?.Invoke(Level);
     }
@@ -173,7 +200,7 @@ public class AlleyChuteDirector : MonoBehaviour
 
     public void SaveNow()
     {
-        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules, Clues, Progress).ToJson());
+        PlayerPrefs.SetString(CurrentSaveKey, HeistSave.Capture(Vault, Rules, Clues, Progress, CaseFile).ToJson());
         PlayerPrefs.Save();
     }
 

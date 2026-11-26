@@ -238,11 +238,11 @@ public class ClueRulesTests
         Clue a = clues.ClueFound(3).Value;
         Clue b = clues.ClueFound(1).Value;
 
-        string json = HeistSave.Capture(vault, rules, clues, new PlaceProgress(6)).ToJson();
+        string json = HeistSave.Capture(vault, rules, clues, new PlaceProgress(6), new CaseFile(6, 7)).ToJson();
 
         var vault2 = new VaultProgress();
         var restored = new ClueRules(vault2, 999);
-        HeistSave.FromJson(json).Apply(vault2, new HeistSortRules(), restored, new PlaceProgress(6));
+        HeistSave.FromJson(json).Apply(vault2, new HeistSortRules(), restored, new PlaceProgress(6), new CaseFile(6, 7));
         Assert.AreEqual(2, restored.Count);
         Assert.AreEqual(a.Symbol, restored.Clues[0].Symbol);
         Assert.AreEqual(3, restored.Clues[0].Tier);
@@ -266,7 +266,7 @@ public class ClueRulesTests
         var rules = new HeistSortRules();
         var clues = new ClueRules(vault, 5);
         clues.ClueFound(2);
-        HeistSave.FromJson(old).Apply(vault, rules, clues, new PlaceProgress(6));
+        HeistSave.FromJson(old).Apply(vault, rules, clues, new PlaceProgress(6), new CaseFile(6, 7));
         Assert.AreEqual(0, clues.Count);
         Assert.AreEqual(0, clues.Cycle);
         Assert.IsFalse(clues.HackDue);

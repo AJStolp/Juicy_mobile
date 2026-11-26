@@ -42,6 +42,9 @@ public class LevelRules
     // Gems lost plus dynamite let off, for the report.
     public int Lost { get; private set; }
     public int GoldCaught { get; private set; }
+    // Best streak tier (0 to 3) reached in this attempt; sets how clearly the
+    // level's clue shows on a win.
+    public int BestTier { get; private set; }
     public int Dropped { get; private set; }
     public float Elapsed { get; private set; }
 
@@ -58,6 +61,7 @@ public class LevelRules
         rules.Sorted += OnSorted;
         rules.Missed += OnMissed;
         rules.Trashed += OnTrashed;
+        rules.StreakChanged += OnStreak;
     }
 
     // The first drops are always gems, so the level's hint is read before
@@ -93,6 +97,12 @@ public class LevelRules
         rules.Sorted -= OnSorted;
         rules.Missed -= OnMissed;
         rules.Trashed -= OnTrashed;
+        rules.StreakChanged -= OnStreak;
+    }
+
+    void OnStreak(int streak, int tier)
+    {
+        if (Playing && tier > BestTier) BestTier = tier;
     }
 
     public bool Playing => State == LevelState.Playing;

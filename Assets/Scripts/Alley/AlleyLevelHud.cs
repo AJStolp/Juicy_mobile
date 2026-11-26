@@ -5,9 +5,9 @@ using UnityEngine.InputSystem;
 // The level's goal and result, drawn just in front of the camera
 // (CameraOverlay). Top: gems sorted against the target, and how many more gems
 // the player can lose and still win. When an attempt ends: won with the misses
-// to spare, or how many gems short. A tap after a win goes back to the map
-// when there is one; a tap after a fail tries the level again. Hidden while
-// the map is up.
+// to spare, or how many gems short. A tap after a win moves on to the clue
+// reveal or the map; a tap after a fail tries the level again. Hidden while
+// the reveal or the map is up.
 public class AlleyLevelHud : MonoBehaviour
 {
     static readonly Color Neon = new Color(1f, 0.85f, 0.25f);
@@ -45,7 +45,7 @@ public class AlleyLevelHud : MonoBehaviour
     void Start()
     {
         Camera view = Camera.main;
-        overlay = new CameraOverlay(view, panelMaterial, Distance);
+        overlay = new CameraOverlay(view, panelMaterial, Distance, CameraOverlay.LayerHud);
         transform.SetParent(view.transform, false);
         transform.localPosition = Vector3.zero;
         transform.localRotation = Quaternion.identity;
@@ -71,6 +71,7 @@ public class AlleyLevelHud : MonoBehaviour
         director.AttemptEnded += ShowResult;
         director.AttemptStarted += ShowBanner;
         director.MapOpened += Hide;
+        director.RevealOpened += HideForReveal;
         ShowBanner(director.Level);
         if (director.UsesMap) Hide();
     }
@@ -95,7 +96,10 @@ public class AlleyLevelHud : MonoBehaviour
         director.AttemptEnded -= ShowResult;
         director.AttemptStarted -= ShowBanner;
         director.MapOpened -= Hide;
+        director.RevealOpened -= HideForReveal;
     }
+
+    void HideForReveal(int level, Clue clue) => Hide();
 
     void Update()
     {
@@ -125,7 +129,7 @@ public class AlleyLevelHud : MonoBehaviour
         detailText.text = won
             ? level.MissesLeft + (level.MissesLeft == 1 ? " MISS TO SPARE" : " MISSES TO SPARE")
             : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
-        retryText.text = won && director.UsesMap ? "TAP TO CONTINUE" : "TAP TO TRY AGAIN";
+        retryText.text = won && (director.UsesMap || director.UsesReveal) ? "TAP TO CONTINUE" : "TAP TO TRY AGAIN";
         panel.SetActive(true);
         shownAt = Time.unscaledTime;
     }
@@ -143,7 +147,7 @@ public class AlleyLevelHud : MonoBehaviour
     public void Continue()
     {
         if (!ShowingResult) return;
-        if (director.Level.State == LevelState.Won && director.UsesMap) director.OpenMap();
+        if (director.Level.State == LevelState.Won) director.AfterWin();
         else director.Retry();
     }
 }

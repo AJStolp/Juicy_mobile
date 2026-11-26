@@ -313,8 +313,9 @@ public static class AlleyBatch
 
     // Plays the map through on the real save (backed up and put back):
     // stills of both looks with nothing and three levels beaten, a locked stop
-    // refusing a tap, an open stop starting its level, a forced win, and the
-    // map coming back with the next stop open and the save holding it.
+    // refusing a tap, an open stop starting its level, a forced win, the clue
+    // scratched off (half, then all), and the map coming back with the next
+    // stop open, the clue on the board and the save holding both.
     // Stills in /tmp/juicy-map-*.png, result in /tmp/juicy-map.txt (PASS or
     // FAIL first).
     //   Unity -batchmode -projectPath . -executeMethod AlleyBatch.MapCheck   (no -quit)
@@ -406,6 +407,8 @@ public static class AlleyBatch
             case 2:
                 AlleySceneBuilder.Capture("/tmp/juicy-map-board-0.png");
                 director.Progress.Restore(3);
+                // Clues as real wins would have left them: City 1 crystal clear, City 2 smudged.
+                director.CaseFile.Restore(new[] { ClueRules.MaxTier, 1, ClueRules.MaxTier });
                 map.Show();
                 MapStep(3);
                 return;
@@ -426,6 +429,7 @@ public static class AlleyBatch
                 AlleySceneBuilder.Capture("/tmp/juicy-map-streets-3.png");
                 map.SetLook(AlleyMap.Look.Board);
                 director.Progress.Restore(2);
+                director.CaseFile.Restore(new[] { ClueRules.MaxTier, 1 });
                 map.Show();
                 MapExpect(!map.Choose(4), "a locked stop (City 5) does not start");
                 MapExpect(map.Showing && director.Paused, "the map stays up after a locked tap");
@@ -443,17 +447,61 @@ public static class AlleyBatch
                 MapExpect(hud.ShowingResult && director.Level.State == LevelState.Won, "the win panel shows");
                 AlleySceneBuilder.Capture("/tmp/juicy-map-won.png");
                 MapExpect(director.Progress.Beaten == 3, "winning City 3 beats it (3 beaten)");
+                MapExpect(director.CaseFile.Found(2) && director.CaseFile.ClueAt(2).Tier == ClueRules.MaxTier,
+                    "City 3's clue is found, crystal clear after an unbroken streak");
                 hud.Continue();
                 MapStep(8);
                 return;
             case 8:
+            {
+                var reveal = UnityEngine.Object.FindAnyObjectByType<AlleyClueReveal>();
+                MapExpect(reveal != null && reveal.Showing && !reveal.Revealed && !map.Showing, "a tap after the win shows the scratch card, not yet the map");
+                AlleySceneBuilder.Capture("/tmp/juicy-reveal-covered.png");
+                for (float x = 0.16f; x < 0.5f; x += 0.03f)
+                    for (float y = 0.4f; y < 0.65f; y += 0.03f) reveal.ScratchAt(new UnityEngine.Vector2(x, y));
+                MapExpect(!reveal.Revealed && reveal.Cleared > 0.3f && reveal.Cleared < 0.65f, "half a rub leaves the card covered (" + reveal.Cleared.ToString("0.00") + " cleared)");
+                MapStep(9);
+                return;
+            }
+            case 9:
+            {
+                var reveal = UnityEngine.Object.FindAnyObjectByType<AlleyClueReveal>();
+                AlleySceneBuilder.Capture("/tmp/juicy-reveal-half.png");
+                for (float x = 0.16f; x < 0.86f; x += 0.03f)
+                    for (float y = 0.4f; y < 0.65f; y += 0.03f) reveal.ScratchAt(new UnityEngine.Vector2(x, y));
+                MapExpect(reveal.Revealed && reveal.Cleared >= 0.999f, "rubbing most of it off reveals the clue");
+                MapStep(10);
+                return;
+            }
+            case 10:
+            {
+                var reveal = UnityEngine.Object.FindAnyObjectByType<AlleyClueReveal>();
+                AlleySceneBuilder.Capture("/tmp/juicy-reveal-done.png");
+                reveal.Continue();
+                MapStep(11);
+                return;
+            }
+            case 11:
+            {
                 AlleySceneBuilder.Capture("/tmp/juicy-map-after-win.png");
-                MapExpect(map.Showing && director.Paused, "a tap after the win goes back to the map");
+                MapExpect(map.Showing && director.Paused, "pinning the clue goes back to the map");
                 MapExpect(director.Progress.IsOpen(3) && !director.Progress.IsOpen(4), "City 4 is open and City 5 still locked");
                 var saved = HeistSave.FromJson(UnityEngine.PlayerPrefs.GetString(SaveKey, ""));
                 MapExpect(saved != null && saved.placeBeaten == 3, "the save holds 3 beaten");
+                MapExpect(saved != null && saved.placeClueTiers.Length == 6 && saved.placeClueTiers[2] == ClueRules.MaxTier && saved.placeClueTiers[3] == CaseFile.Unfound,
+                    "the save holds City 3's clue and no clue for City 4");
+                // A barely readable clue, for a still of the grime.
+                var reveal = UnityEngine.Object.FindAnyObjectByType<AlleyClueReveal>();
+                reveal.Show(4, new Clue { Symbol = director.CaseFile.ClueAt(4).Symbol, Tier = 0 });
+                for (float x = 0.16f; x < 0.86f; x += 0.03f)
+                    for (float y = 0.4f; y < 0.65f; y += 0.03f) reveal.ScratchAt(new UnityEngine.Vector2(x, y));
+                MapStep(12);
+                return;
+            }
+            case 12:
+                AlleySceneBuilder.Capture("/tmp/juicy-reveal-smudged.png");
                 System.IO.File.WriteAllText(MapReport, (mapOk ? "PASS" : "FAIL") + " map check\n" + mapLog +
-                    "stills /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win}.png\n");
+                    "stills /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win}.png /tmp/juicy-reveal-{covered,half,done,smudged}.png\n");
                 SessionState.SetInt(MapStepKey, 90);
                 EditorApplication.isPlaying = false;
                 return;
