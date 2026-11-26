@@ -1,18 +1,27 @@
+using System.Collections.Generic;
 using UnityEngine;
 
-// One-shot heist effects. Theme music slots stay empty. The keypad's beep and
-// buzz are synthesized, so they need no audio files.
+// Every sound effect in the game, as one call each from anywhere. The clips
+// are synthesized by ArtSource/Audio/build_audio.py into Resources/Audio, so
+// they are original and owe no license or credit; the keypad's beep and buzz
+// are made here. Nothing plays while sound is off (AudioPrefs).
 public class JuicyAudioHooks : MonoBehaviour
 {
+    public static readonly string[] ClipNames =
+    {
+        "sort_ding", "sort_wrong", "miss", "flick", "boom", "cash", "streak_up", "level_won", "level_failed",
+        "scratch", "reveal", "pin", "tap", "vault_unbolt", "vault_crack", "tire_squeal",
+    };
+
+    // A correct sort rises a little in pitch with each sort of a streak.
+    const float PitchPerStreak = 0.025f;
+    const int PitchStreakCap = 20;
+
     public static JuicyAudioHooks Instance { get; private set; }
 
+    readonly Dictionary<string, AudioClip> clips = new Dictionary<string, AudioClip>();
     AudioSource source;
-    AudioClip vault;
-    AudioClip sort;
-    AudioClip chime;
-    AudioClip squeal;
-    AudioClip beep;
-    AudioClip buzz;
+    AudioSource pitched;
 
     public static void Ensure()
     {
@@ -27,21 +36,22 @@ public class JuicyAudioHooks : MonoBehaviour
             Destroy(gameObject);
             return;
         }
-
         Instance = this;
+        DontDestroyOnLoad(gameObject);
         source = gameObject.AddComponent<AudioSource>();
         source.playOnAwake = false;
         source.spatialBlend = 0f;
-        vault = Resources.Load<AudioClip>("Audio/vault_unbolt");
-        sort = Resources.Load<AudioClip>("Audio/sort_clunk");
-        chime = Resources.Load<AudioClip>("Audio/money_chime");
-        squeal = Resources.Load<AudioClip>("Audio/tire_squeal");
-        if (vault == null) Debug.LogWarning("Heist audio missing vault_unbolt.");
-        if (sort == null) Debug.LogWarning("Heist audio missing sort_clunk.");
-        if (chime == null) Debug.LogWarning("Heist audio missing money_chime.");
-        if (squeal == null) Debug.LogWarning("Heist audio missing tire_squeal.");
-        beep = Tone("keypad_beep", 1320f, 0.09f, false);
-        buzz = Tone("keypad_buzz", 110f, 0.45f, true);
+        pitched = gameObject.AddComponent<AudioSource>();
+        pitched.playOnAwake = false;
+        pitched.spatialBlend = 0f;
+        foreach (string name in ClipNames)
+        {
+            AudioClip clip = Resources.Load<AudioClip>("Audio/" + name);
+            if (clip == null) Debug.LogWarning("Sound missing: Resources/Audio/" + name);
+            else clips[name] = clip;
+        }
+        clips["keypad_beep"] = Tone("keypad_beep", 1320f, 0.09f, false);
+        clips["keypad_buzz"] = Tone("keypad_buzz", 110f, 0.45f, true);
     }
 
     void OnDestroy()
@@ -49,42 +59,48 @@ public class JuicyAudioHooks : MonoBehaviour
         if (Instance == this) Instance = null;
     }
 
-    public static void Vault()
+    public static void Sort(int streak)
     {
         Ensure();
-        Instance.Play(Instance.vault, 0.9f);
+        Instance.PlayPitched("sort_ding", 0.75f, 1f + PitchPerStreak * Mathf.Min(streak, PitchStreakCap));
     }
 
-    public static void Sort()
-    {
-        Ensure();
-        Instance.Play(Instance.sort, 0.8f);
-    }
-
-    public static void Chime()
-    {
-        Ensure();
-        Instance.Play(Instance.chime, 0.7f);
-    }
-
-    public static void Getaway()
-    {
-        Ensure();
-        Instance.Play(Instance.squeal, 1f);
-    }
-
+    public static void Wrong() => Play("sort_wrong", 0.8f);
+    public static void Miss() => Play("miss", 0.7f);
+    public static void Flick() => Play("flick", 0.7f);
+    public static void Boom() => Play("boom", 0.9f);
+    public static void Cash() => Play("cash", 0.8f);
+    public static void StreakUp() => Play("streak_up", 0.7f);
+    public static void Won() => Play("level_won", 0.85f);
+    public static void Failed() => Play("level_failed", 0.8f);
+    public static void Scratch() => Play("scratch", 0.45f);
+    public static void Reveal() => Play("reveal", 0.8f);
+    public static void Pin() => Play("pin", 0.8f);
+    public static void Tap() => Play("tap", 0.6f);
+    public static void Vault() => Play("vault_unbolt", 0.85f);
+    public static void Crack() => Play("vault_crack", 0.95f);
+    public static void Getaway() => Play("tire_squeal", 0.7f);
     // A right key on the vault keypad.
-    public static void Beep()
+    public static void Beep() => Play("keypad_beep", 0.6f);
+    // A wrong key on the vault keypad.
+    public static void Buzz() => Play("keypad_buzz", 0.7f);
+
+    static void Play(string name, float volume)
     {
         Ensure();
-        Instance.Play(Instance.beep, 0.6f);
+        Instance.PlayClip(Instance.source, name, volume);
     }
 
-    // A wrong key on the vault keypad.
-    public static void Buzz()
+    void PlayPitched(string name, float volume, float pitch)
     {
-        Ensure();
-        Instance.Play(Instance.buzz, 0.7f);
+        pitched.pitch = pitch;
+        PlayClip(pitched, name, volume);
+    }
+
+    void PlayClip(AudioSource on, string name, float volume)
+    {
+        if (!AudioPrefs.SoundOn || on == null) return;
+        if (clips.TryGetValue(name, out AudioClip clip)) on.PlayOneShot(clip, volume);
     }
 
     // A short tone with a quick fade out: sine for the beep, square for the buzz.
@@ -103,18 +119,5 @@ public class JuicyAudioHooks : MonoBehaviour
         AudioClip clip = AudioClip.Create(name, length, 1, rate, false);
         clip.SetData(samples, 0);
         return clip;
-    }
-
-    void Play(AudioClip clip, float volume)
-    {
-        if (source == null || clip == null)
-        {
-            Debug.LogWarning("Heist audio clip missing.");
-            return;
-        }
-
-        source.pitch = 1f;
-        source.PlayOneShot(clip, volume);
-        Debug.Log("Heist audio " + clip.name);
     }
 }

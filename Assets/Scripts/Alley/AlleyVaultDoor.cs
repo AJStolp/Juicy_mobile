@@ -186,7 +186,8 @@ public class AlleyVaultDoor : MonoBehaviour
         cracking = true;
         for (int s = 0; s < shown.Length; s++) shown[s] = 1f;
         if (cameraRig != null) cameraRig.Push(Focus, 0.22f, 5f);
-        JuicyAudioHooks.Vault();
+        // A boom as the wheel spins, then a bright chord as the door swings.
+        JuicyAudioHooks.Crack();
 
         for (float t = 0f; t < 1f; t += Time.deltaTime)
         {
@@ -194,7 +195,6 @@ public class AlleyVaultDoor : MonoBehaviour
             Pose();
             yield return null;
         }
-        JuicyAudioHooks.Chime();
         if (cameraRig != null) cameraRig.Shake(0.4f);
         for (float t = 0f; t < 1.2f; t += Time.deltaTime)
         {

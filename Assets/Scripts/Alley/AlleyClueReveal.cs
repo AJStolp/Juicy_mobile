@@ -41,6 +41,9 @@ public class AlleyClueReveal : MonoBehaviour
     GameObject result;
     int cleared;
     float revealedAt;
+    // The scrape sound repeats while the finger keeps clearing silver.
+    const float ScratchSoundGap = 0.09f;
+    float nextScratchSound;
     // The pinning tap must start after the reveal, so lifting the finger that
     // finished the scratch never skips past the clue.
     bool freshPress;
@@ -190,6 +193,9 @@ public class AlleyClueReveal : MonoBehaviour
     {
         cells[index].gameObject.SetActive(false);
         cleared++;
+        if (Time.unscaledTime < nextScratchSound) return;
+        nextScratchSound = Time.unscaledTime + ScratchSoundGap;
+        JuicyAudioHooks.Scratch();
     }
 
     void CheckRevealed()
@@ -199,6 +205,7 @@ public class AlleyClueReveal : MonoBehaviour
             if (cells[i].gameObject.activeSelf) Clear(i);
         Revealed = true;
         freshPress = false;
+        JuicyAudioHooks.Reveal();
         revealedAt = Time.unscaledTime;
         instruction.gameObject.SetActive(false);
         result.SetActive(true);
@@ -208,6 +215,7 @@ public class AlleyClueReveal : MonoBehaviour
     public void Continue()
     {
         if (!Revealed) return;
+        JuicyAudioHooks.Pin();
         content.SetActive(false);
         if (director.UsesMap) director.OpenMap();
         else director.Retry();
