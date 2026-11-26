@@ -4,17 +4,13 @@ using UnityEngine.InputSystem;
 
 // The level's goal and result, drawn as text just in front of the camera so
 // every capture of the camera includes it. Top: gems sorted against the
-// target and the goal's limit. When an attempt ends: won with the room to
-// spare, or how many gems short, a tap to try again, and the three goals to
-// switch between (prototype, T-028).
+// target, and the gems still to fall. When an attempt ends: won with the gems
+// to spare, or how many gems short, and a tap to try again.
 public class AlleyLevelHud : MonoBehaviour
 {
-    static readonly LevelGoal[] Goals = { LevelGoal.Heat, LevelGoal.Clock, LevelGoal.Gems };
-    static readonly string[] GoalNames = { "HEAT", "CLOCK", "GEMS" };
     static readonly Color Neon = new Color(1f, 0.85f, 0.25f);
     static readonly Color Win = new Color(0.35f, 1f, 0.45f);
     static readonly Color Fail = new Color(1f, 0.28f, 0.3f);
-    static readonly Color Idle = new Color(0.75f, 0.75f, 0.8f);
 
     [SerializeField] AlleyChuteDirector director;
     [SerializeField] Material panelMaterial;
@@ -28,8 +24,6 @@ public class AlleyLevelHud : MonoBehaviour
     TextMeshPro titleText;
     TextMeshPro detailText;
     TextMeshPro retryText;
-    readonly TextMeshPro[] goalTexts = new TextMeshPro[3];
-    readonly Renderer[] goalBacks = new Renderer[3];
     MaterialPropertyBlock block;
     float punch;
     int lastSorted;
@@ -56,18 +50,11 @@ public class AlleyLevelHud : MonoBehaviour
 
         panel = new GameObject("Result_Panel");
         panel.transform.SetParent(transform, false);
-        Quad(panel.transform, "Back", new Vector2(0.5f, 0.52f), new Vector2(0.86f, 0.34f), new Color(0.02f, 0.02f, 0.05f, 0.82f), 0.002f);
+        Quad(panel.transform, "Back", new Vector2(0.5f, 0.57f), new Vector2(0.86f, 0.24f), new Color(0.02f, 0.02f, 0.05f, 0.82f), 0.002f);
         titleText = Text("Title", new Vector2(0.5f, 0.64f), new Vector2(0.8f, 0.07f), Win, panel.transform);
         detailText = Text("Detail", new Vector2(0.5f, 0.575f), new Vector2(0.8f, 0.04f), Color.white, panel.transform);
         retryText = Text("Retry", new Vector2(0.5f, 0.505f), new Vector2(0.8f, 0.035f), Neon, panel.transform);
         retryText.text = "TAP TO TRY AGAIN";
-        for (int i = 0; i < Goals.Length; i++)
-        {
-            Vector2 at = new Vector2(0.24f + i * 0.26f, 0.415f);
-            goalBacks[i] = Quad(panel.transform, "Goal_" + GoalNames[i], at, new Vector2(0.23f, 0.055f), Idle, 0.001f);
-            goalTexts[i] = Text("Goal_" + GoalNames[i] + "_Label", at, new Vector2(0.2f, 0.035f), Color.black, panel.transform);
-            goalTexts[i].text = GoalNames[i];
-        }
         panel.SetActive(false);
 
         director.AttemptEnded += ShowResult;
@@ -92,92 +79,32 @@ public class AlleyLevelHud : MonoBehaviour
         punch = Mathf.MoveTowards(punch, 0f, Time.deltaTime * 5f);
         gemsText.text = "GEMS " + level.Sorted + " / " + level.Target;
         gemsText.transform.localScale = Vector3.one * (1f + punch * 0.08f);
-        limitText.text = Limit(level);
-        limitText.color = Danger(level) ? Fail : Color.white;
-        if (ShowingResult) TickChoice();
-    }
-
-    string Limit(LevelRules level)
-    {
-        switch (level.Goal)
-        {
-            case LevelGoal.Heat: return "HEAT " + Mathf.RoundToInt(director.Rules.Heat) + " / 100";
-            case LevelGoal.Clock: return "TIME " + Clock(level.TimeLeft);
-            default: return "GEMS LEFT TO FALL " + level.GemsLeft;
-        }
-    }
-
-    bool Danger(LevelRules level)
-    {
-        switch (level.Goal)
-        {
-            case LevelGoal.Heat: return director.Rules.Heat >= 60f;
-            case LevelGoal.Clock: return level.TimeLeft <= 20f;
-            default: return level.GemsLeft + level.Sorted < level.Target + 10;
-        }
-    }
-
-    static string Clock(float seconds)
-    {
-        int whole = Mathf.CeilToInt(Mathf.Max(0f, seconds));
-        return (whole / 60) + ":" + (whole % 60).ToString("00");
+        limitText.text = "GEMS LEFT TO FALL " + level.GemsLeft;
+        // Red once fewer than 10 misses are left to give.
+        limitText.color = level.GemsLeft + level.Sorted < level.Target + 10 ? Fail : Color.white;
+        if (ShowingResult) TickRetry();
     }
 
     void ShowResult(LevelRules level)
     {
         bool won = level.State == LevelState.Won;
-        titleText.text = won ? "LEVEL WON" : FailTitle(level.Goal);
+        titleText.text = won ? "LEVEL WON" : "OUT OF GEMS";
         titleText.color = won ? Win : Fail;
-        detailText.text = won ? WinDetail(level) : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
-        for (int i = 0; i < Goals.Length; i++)
-        {
-            block.SetColor("_BaseColor", Goals[i] == level.Goal ? Neon : Idle);
-            goalBacks[i].SetPropertyBlock(block);
-        }
+        detailText.text = won
+            ? level.GemsLeft + (level.GemsLeft == 1 ? " GEM TO SPARE" : " GEMS TO SPARE")
+            : level.ShortBy + (level.ShortBy == 1 ? " GEM SHORT" : " GEMS SHORT");
         panel.SetActive(true);
         shownAt = Time.unscaledTime;
     }
 
-    static string FailTitle(LevelGoal goal)
-    {
-        switch (goal)
-        {
-            case LevelGoal.Heat: return "BUSTED";
-            case LevelGoal.Clock: return "OUT OF TIME";
-            default: return "OUT OF GEMS";
-        }
-    }
-
-    static string WinDetail(LevelRules level)
-    {
-        switch (level.Goal)
-        {
-            case LevelGoal.Heat: return "CLOSEST CALL " + Mathf.RoundToInt(level.PeakHeat) + " HEAT";
-            case LevelGoal.Clock: return Clock(level.TimeLeft) + " TO SPARE";
-            default: return level.GemsLeft + (level.GemsLeft == 1 ? " GEM TO SPARE" : " GEMS TO SPARE");
-        }
-    }
-
-    // A tap on a goal tries that goal; a tap anywhere else tries this one again.
-    void TickChoice()
+    // A tap anywhere tries the level again.
+    void TickRetry()
     {
         // The swipe that ended the attempt must not also start the next one.
         if (director.AutoPlay || Time.unscaledTime < shownAt + 0.6f) return;
         Pointer pointer = Pointer.current;
         if (pointer == null || !pointer.press.wasReleasedThisFrame) return;
-        Vector2 tap = pointer.position.ReadValue();
-        LevelGoal next = director.Goal;
-        for (int i = 0; i < Goals.Length; i++)
-            if (ScreenRect(goalBacks[i]).Contains(tap)) next = Goals[i];
-        director.Retry(next);
-    }
-
-    Rect ScreenRect(Renderer renderer)
-    {
-        Bounds b = renderer.bounds;
-        Vector3 min = view.WorldToScreenPoint(b.min);
-        Vector3 max = view.WorldToScreenPoint(b.max);
-        return Rect.MinMaxRect(Mathf.Min(min.x, max.x), Mathf.Min(min.y, max.y), Mathf.Max(min.x, max.x), Mathf.Max(min.y, max.y));
+        director.Retry();
     }
 
     // Size of the view at the HUD's distance, in metres. The game is portrait,

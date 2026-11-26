@@ -12,81 +12,31 @@ public class LevelRulesTests
         for (int i = 0; i < times; i++) rules.Catch(ItemKind.Gem, 0, 1);
     }
 
-    [TestCase(LevelGoal.Heat)]
-    [TestCase(LevelGoal.Clock)]
-    [TestCase(LevelGoal.Gems)]
-    public void WinsWhenTheTargetIsSorted(LevelGoal goal)
+    [Test]
+    public void WinsWhenTheTargetIsSorted()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, goal, target: 10, seconds: 60f, gems: 20);
+        var level = new LevelRules(rules, target: 10, gems: 20);
         LevelRules ended = null;
         level.Ended += l => ended = l;
-        for (int i = 0; i < 10; i++) level.Drop();
+        for (int i = 0; i < 10; i++) level.Drop(out _, out _);
         Correct(rules, 9);
         Assert.AreEqual(LevelState.Playing, level.State);
         Correct(rules, 1);
         Assert.AreEqual(LevelState.Won, level.State);
         Assert.AreSame(level, ended);
         Assert.AreEqual(0, level.ShortBy);
+        Assert.AreEqual(10, level.GemsLeft);
     }
 
     [Test]
-    public void HeatGoalFailsOnABustWithTheGemsShort()
+    public void StopsDroppingAtTheLimitAndFailsOnceEveryGemIsSpent()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, LevelGoal.Heat, target: 30);
-        Correct(rules, 26);
-        Wrong(rules, 5);
-        Assert.AreEqual(LevelState.Failed, level.State);
-        Assert.AreEqual(4, level.ShortBy);
-        Assert.AreEqual(0f, level.Margin, 0.001f);
-    }
-
-    [Test]
-    public void HeatGoalMarginIsTheRoomLeftBelowTheBustAtItsHighest()
-    {
-        var rules = new HeistSortRules();
-        var level = new LevelRules(rules, LevelGoal.Heat, target: 3);
-        Wrong(rules, 1);
-        rules.Tick(100f);
-        Correct(rules, 3);
-        Assert.AreEqual(LevelState.Won, level.State);
-        Assert.AreEqual(HeistSortRules.MaxHeat - HeistSortRules.MisSortHeat, level.Margin, 0.001f);
-    }
-
-    [Test]
-    public void ClockGoalFailsWhenTimeRunsOutAndAMistakeCostsSeconds()
-    {
-        var rules = new HeistSortRules();
-        var level = new LevelRules(rules, LevelGoal.Clock, target: 30, seconds: 20f);
-        Correct(rules, 5);
-        Wrong(rules, 1);
-        Assert.AreEqual(20f - LevelRules.MistakeSeconds, level.TimeLeft, 0.001f);
-        rules.Miss(ItemKind.Gem);
-        Assert.AreEqual(20f - 2f * LevelRules.MistakeSeconds, level.TimeLeft, 0.001f);
-        level.Tick(13.9f);
-        Assert.AreEqual(LevelState.Playing, level.State);
-        level.Tick(0.2f);
-        Assert.AreEqual(LevelState.Failed, level.State);
-        Assert.AreEqual(25, level.ShortBy);
-    }
-
-    [Test]
-    public void ClockGoalRaisesNoHeat()
-    {
-        var rules = new HeistSortRules();
-        var level = new LevelRules(rules, LevelGoal.Clock, target: 30, seconds: 999f);
-        Wrong(rules, 10);
-        Assert.AreEqual(0f, rules.Heat);
-        Assert.AreEqual(LevelState.Playing, level.State);
-    }
-
-    [Test]
-    public void GemsGoalStopsDroppingAtTheLimitAndFailsOnceEveryGemIsSpent()
-    {
-        var rules = new HeistSortRules();
-        var level = new LevelRules(rules, LevelGoal.Gems, target: 8, gems: 10);
-        for (int i = 0; i < 12; i++) level.Drop();
+        var level = new LevelRules(rules, target: 8, gems: 10);
+        int drops = 0;
+        while (level.Drop(out _, out _)) drops++;
+        Assert.AreEqual(10, drops);
         Assert.AreEqual(10, level.Dropped);
         Assert.IsFalse(level.CanDrop);
         Correct(rules, 6);
@@ -98,29 +48,66 @@ public class LevelRulesTests
         Correct(rules, 1);
         Assert.AreEqual(LevelState.Failed, level.State);
         Assert.AreEqual(1, level.ShortBy);
-        Assert.AreEqual(0f, rules.Heat);
     }
 
     [Test]
-    public void GemsGoalMarginIsTheGemsThatNeverFell()
+    public void RaisesNoHeat()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, LevelGoal.Gems, target: 5, gems: 12);
-        for (int i = 0; i < 7; i++) level.Drop();
-        Correct(rules, 5);
-        Assert.AreEqual(LevelState.Won, level.State);
-        Assert.AreEqual(5f, level.Margin, 0.001f);
+        var level = new LevelRules(rules, target: 30, gems: 999);
+        Wrong(rules, 10);
+        rules.Miss(ItemKind.Gem);
+        Assert.AreEqual(0f, rules.Heat);
+        Assert.AreEqual(LevelState.Playing, level.State);
+    }
+
+    [Test]
+    public void GemsComeInTheSameOrderOnEveryAttempt()
+    {
+        var rules = new HeistSortRules();
+        var first = new LevelRules(rules, gems: 40, seed: 7);
+        var colors = new int[40];
+        var rolls = new float[40];
+        for (int i = 0; i < 40; i++) first.Drop(out colors[i], out rolls[i]);
+        first.Dispose();
+        rules.StartAttempt();
+        var again = new LevelRules(rules, gems: 40, seed: 7);
+        for (int i = 0; i < 40; i++)
+        {
+            again.Drop(out int color, out float roll);
+            Assert.AreEqual(colors[i], color, "color of gem " + i);
+            Assert.AreEqual(rolls[i], roll, "chute of gem " + i);
+        }
+    }
+
+    [Test]
+    public void TheOrderUsesBothColorsAndChangesWithTheSeed()
+    {
+        var a = new LevelRules(new HeistSortRules(), gems: 40, seed: 1);
+        var b = new LevelRules(new HeistSortRules(), gems: 40, seed: 2);
+        int reds = 0, differ = 0;
+        for (int i = 0; i < 40; i++)
+        {
+            a.Drop(out int colorA, out float rollA);
+            b.Drop(out int colorB, out _);
+            Assert.That(colorA, Is.InRange(0, HeistSortRules.Sides - 1));
+            Assert.That(rollA, Is.GreaterThanOrEqualTo(0f).And.LessThan(1f));
+            if (colorA == 0) reds++;
+            if (colorA != colorB) differ++;
+        }
+        Assert.That(reds, Is.InRange(1, 39));
+        Assert.Greater(differ, 0);
     }
 
     [Test]
     public void AFinishedLevelIgnoresTheNextAttempt()
     {
         var rules = new HeistSortRules();
-        var level = new LevelRules(rules, LevelGoal.Clock, target: 2, seconds: 60f);
+        var level = new LevelRules(rules, target: 2);
         Correct(rules, 2);
         level.Dispose();
         rules.StartAttempt();
-        var next = new LevelRules(rules, LevelGoal.Clock, target: 2, seconds: 60f);
+        var next = new LevelRules(rules, target: 2);
         Correct(rules, 1);
         Assert.AreEqual(2, level.Sorted);
         Assert.AreEqual(1, next.Sorted);

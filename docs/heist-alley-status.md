@@ -10,16 +10,13 @@ A diegetic color sort game with casino style juice: everything happens inside th
 
 ## How it plays today
 
-- Items fall from invisible chutes above the street. One chute opens at the start and one more each leg, up to four. A leg is four vat fills.
-- Swipe left or right to send an item into that side's deposit chest (crimson left, indigo right). Swipe up to trash it.
-- Items are gems (one diamond model, tinted per color), dynamite bombs, cash stacks and letter tiles that spell HEIST, VAULT and ESCAPE.
-- A correct sort pays 50 times the streak tier (x2 at 5, x3 at 10, x5 at 15). Gold pays 150. HEIST pays 25,000; the other words pay 2,500.
-- Mistakes raise heat. At 100 heat you are busted: the stage loot is lost, the screen clears, and you stay on the same leg.
-- The balance rolls up on the vault timer's screen.
-- **The vault is the objective.** Every vat fill turns the vault door one step. It has seven stages. The door is the graffiti building's own steel door: the first four stages slide its three locking bars and then its handle, the fifth turns its gear lock, and its wheel turns a quarter with every stage. A full stage locks for good. A bust takes back half of the stage in play, never a locked one. Locking the wheel cracks the vault, and the next heist starts on a fresh door. Turns per stage are 9, 16, then 28 from the third vault on (`VaultProgress.TurnsByHeist`). Bot runs crack vault 1 in about 12 game minutes.
-- **The clue hack replaces the old bonus round** (`game-design.md`). Its rules are in `ClueRules.cs`. When a clue cycle is full (3 clues, 4 from the second heist), the camera holds on a keypad beside the vault door and the player taps the clues in the order they were found. Each correct tap climbs one step of the reward ladder, and the first wrong tap ends it (`AlleyHack.cs`). The clue trip that finds clues between legs is still on its branch (T-020), so until it merges nothing collects clues in play.
-- **Swiping dynamite away pockets it** as gear, up to 3. Gear is only counted so far; nothing spends it yet.
-- **Progress saves** between sittings: vault stage and turns, cash and gear (`HeistSave`, in PlayerPrefs). Legs, chutes, heat and streak start fresh each sitting.
+- **The alley plays as one level** (T-028, goal C picked by Anthony 2026-11-26). 90 gems fall, and the level asks for 75 of them sorted correctly. It is won at the 75th correct sort, and failed once every gem has been sorted, lost or missed short of 75. The gems come in the same color order on every attempt (`LevelRules`, seeded), so a fail is the player's doing. An attempt lasts about 75 to 80 seconds.
+- Gems fall from invisible chutes above the street. One chute opens at the start and one more each leg, up to four. A leg is four vat fills.
+- Swipe left or right to send a gem into that side's deposit chest (crimson left, indigo right). Swipe up to trash it. A wrong sort, a trash or a miss loses that gem.
+- The top of the screen shows gems sorted against the target and the gems still to fall, which turn red once fewer than 10 misses are left to give. When an attempt ends, a panel shows LEVEL WON with the gems to spare, or OUT OF GEMS with how many gems short. Tap anywhere to try again. A fail costs only the attempt: cash and gear carry over.
+- A correct sort pays 50 times the streak tier (x2 at 5, x3 at 10, x5 at 15). The balance rolls up on the vault timer's screen.
+- **Held back for later levels (T-026, T-033):** dynamite, cash stacks and letter tiles do not fall; heat is off, so there are no busts; the vault door does not turn; the HEIST word sign is hidden; and the clue hack never comes due. Their code is still in place for the levels and the boss that bring them back.
+- **Progress saves** between sittings: cash and gear (`HeistSave`, in PlayerPrefs).
 
 ## How the alley reacts
 
@@ -83,4 +80,4 @@ Running tools in the open editor: write an `AlleyBatch` method name to `/tmp/jui
 
 ## TLDR
 
-The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bars slide, the gear and wheel turn, busts grind the current stage back, and cracking it opens the door. When a clue cycle is full, the player taps the clues in order on a keypad beside the vault for a reward ladder. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).
+The alley plays as one level: 90 gems fall in the same color order every attempt, and sorting 75 of them into the two deposit chests wins it. Run out first and the panel says how many gems short, with a tap to try again that costs only the attempt. Every correct sort pays cash on the streak. The other items, heat, the vault door and the clue hack are held back for the levels and the boss that bring them back (T-026). The launch plan is on the board under T-030. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).

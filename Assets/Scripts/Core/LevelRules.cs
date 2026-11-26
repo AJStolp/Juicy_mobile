@@ -1,50 +1,42 @@
 using System;
 
-// What wins or fails one level, with no presentation. A level asks for a
-// number of gems sorted correctly; the goal decides what ends it first.
-// Prototype: the three goals are switchable until Anthony picks one (T-028).
-public enum LevelGoal { Heat, Clock, Gems }
-
 public enum LevelState { Playing, Won, Failed }
 
+// What wins or fails one level, with no presentation. A level drops a fixed
+// number of gems and asks for a number of them sorted correctly. It fails
+// once every gem has been sorted, lost or missed short of the target. The
+// gems come in the same color order on every attempt, set by the level's
+// seed, so a fail is the player's doing and not the draw's.
 public class LevelRules
 {
-    public const int DefaultTarget = 150;
-    public const float DefaultSeconds = 220f;
-    public const int DefaultGems = 178;
-    public const float MistakeSeconds = 3f;
+    public const int DefaultTarget = 75;
+    public const int DefaultGems = 90;
+    public const int DefaultSeed = 1;
 
     readonly HeistSortRules rules;
+    readonly Random order;
 
-    public LevelGoal Goal { get; }
     public int Target { get; }
-    public float Seconds { get; }
     public int GemLimit { get; }
 
     public LevelState State { get; private set; } = LevelState.Playing;
     public int Sorted { get; private set; }
     public int Lost { get; private set; }
     public int Dropped { get; private set; }
-    public float TimeLeft { get; private set; }
     public float Elapsed { get; private set; }
-    public float PeakHeat { get; private set; }
 
     public event Action<LevelRules> Ended;
 
-    public LevelRules(HeistSortRules sortRules, LevelGoal goal, int target = DefaultTarget, float seconds = DefaultSeconds, int gems = DefaultGems)
+    public LevelRules(HeistSortRules sortRules, int target = DefaultTarget, int gems = DefaultGems, int seed = DefaultSeed)
     {
         rules = sortRules;
-        Goal = goal;
         Target = target;
-        Seconds = seconds;
         GemLimit = gems;
-        TimeLeft = seconds;
-        rules.HeatOn = goal == LevelGoal.Heat;
+        order = new Random(seed);
+        rules.HeatOn = false;
         rules.Sorted += OnSorted;
         rules.Missed += OnLost;
         rules.Trashed += OnLost;
-        rules.Busted += OnBusted;
-        rules.HeatChanged += OnHeat;
     }
 
     // Stops listening, so a finished level never reacts to the next attempt.
@@ -53,47 +45,34 @@ public class LevelRules
         rules.Sorted -= OnSorted;
         rules.Missed -= OnLost;
         rules.Trashed -= OnLost;
-        rules.Busted -= OnBusted;
-        rules.HeatChanged -= OnHeat;
     }
 
     public bool Playing => State == LevelState.Playing;
 
-    // Gems still to fall in the limited gems goal.
+    // Gems still to fall. On a win, the gems that never had to.
     public int GemsLeft => Math.Max(0, GemLimit - Dropped);
 
-    public bool CanDrop => Playing && (Goal != LevelGoal.Gems || Dropped < GemLimit);
+    public bool CanDrop => Playing && Dropped < GemLimit;
 
     // How many more correct sorts would have won it. 0 on a win.
     public int ShortBy => State == LevelState.Won ? 0 : Math.Max(0, Target - Sorted);
 
-    // The room left on a win: heat below the bust at its highest, seconds on
-    // the clock, or gems that never had to fall.
-    public float Margin
+    // The next gem in the level's order: its color, and a roll in [0, 1) for
+    // which open chute it falls from. False once every gem has fallen.
+    public bool Drop(out int colorId, out float chuteRoll)
     {
-        get
-        {
-            switch (Goal)
-            {
-                case LevelGoal.Heat: return HeistSortRules.MaxHeat - PeakHeat;
-                case LevelGoal.Clock: return TimeLeft;
-                default: return GemsLeft;
-            }
-        }
-    }
-
-    public void Drop()
-    {
-        if (CanDrop) Dropped++;
+        colorId = 0;
+        chuteRoll = 0f;
+        if (!CanDrop) return false;
+        Dropped++;
+        colorId = order.Next(HeistSortRules.Sides);
+        chuteRoll = (float)order.NextDouble();
+        return true;
     }
 
     public void Tick(float dt)
     {
-        if (!Playing || dt <= 0f) return;
-        Elapsed += dt;
-        if (Goal != LevelGoal.Clock) return;
-        TimeLeft = Math.Max(0f, TimeLeft - dt);
-        if (TimeLeft <= 0f) End(LevelState.Failed);
+        if (Playing && dt > 0f) Elapsed += dt;
     }
 
     void OnSorted(SortResult result, int side)
@@ -113,29 +92,13 @@ public class LevelRules
     {
         if (!Playing || kind != ItemKind.Gem) return;
         Lost++;
-        if (Goal == LevelGoal.Clock)
-        {
-            TimeLeft = Math.Max(0f, TimeLeft - MistakeSeconds);
-            if (TimeLeft <= 0f) End(LevelState.Failed);
-            return;
-        }
         CheckGemsSpent();
     }
 
     // Every gem has fallen and been sorted, lost or missed.
     void CheckGemsSpent()
     {
-        if (Goal == LevelGoal.Gems && Playing && Sorted + Lost >= GemLimit) End(LevelState.Failed);
-    }
-
-    void OnBusted()
-    {
-        if (Goal == LevelGoal.Heat) End(LevelState.Failed);
-    }
-
-    void OnHeat(float heat)
-    {
-        if (heat > PeakHeat) PeakHeat = Math.Min(heat, HeistSortRules.MaxHeat);
+        if (Playing && Sorted + Lost >= GemLimit) End(LevelState.Failed);
     }
 
     void End(LevelState state)

@@ -5,16 +5,16 @@ using UnityEngine;
 using UnityEngine.LowLevel;
 using UnityEngine.PlayerLoop;
 
-// Verification run for the level prototype (T-028). Touch /tmp/juicy-alley-bot-run
-// and the open editor enters Play mode with the director on auto play. It
-// plays level attempts in two parts, then writes /tmp/juicy-bot.txt and stops:
-//   1. Numbers: for each goal, Attempts tries by a careful bot (10% mistakes)
-//      and a sloppy one (30%), at 4x. Each attempt's result, margin or gems
-//      short, and length in game seconds.
-//   2. Film: for each goal, one won and one failed attempt at 1x with a fixed
-//      30 frames per game second. The last FilmSeconds of the attempt and the
-//      result panel after it land in /tmp/juicy-level-film/<goal>-<won|failed>/
-//      as numbered jpgs, ready for ffmpeg.
+// Verification run for the level. Touch /tmp/juicy-alley-bot-run and the open
+// editor enters Play mode with the director on auto play. It plays level
+// attempts in two parts, then writes /tmp/juicy-bot.txt and stops:
+//   1. Numbers: Attempts tries by a careful bot (10% mistakes) and a sloppy
+//      one (30%), at 4x. Each attempt's result, gems to spare or short, and
+//      length in game seconds.
+//   2. Film: one won and one failed attempt at 1x with a fixed 30 frames per
+//      game second. The last FilmSeconds of the attempt and the result panel
+//      after it land in /tmp/juicy-level-film/<won|failed>/ as numbered jpgs,
+//      ready for ffmpeg.
 // Times in the report are game seconds, so they read as a real player's pace.
 [InitializeOnLoad]
 public static class AlleyBotRun
@@ -26,7 +26,7 @@ public static class AlleyBotRun
     const string FilmRoot = "/tmp/juicy-level-film";
     const string HomeStill = "/tmp/juicy-level-home.png";
     const float Speed = 4f;
-    const int Attempts = 4;
+    const int Attempts = 8;
     const float Careful = 0.1f;
     const float Sloppy = 0.3f;
     const float FilmWinMistakes = 0.05f;
@@ -37,11 +37,8 @@ public static class AlleyBotRun
     const float ResultSeconds = 3f;
     const float MaxGameSeconds = 7200f;
 
-    static readonly LevelGoal[] Goals = { LevelGoal.Heat, LevelGoal.Clock, LevelGoal.Gems };
-
     struct Run
     {
-        public LevelGoal Goal;
         public float Mistakes;
         public bool Film;
         public bool WantWin;
@@ -111,7 +108,7 @@ public static class AlleyBotRun
         {
             nextProgress = now + 10f;
             File.AppendAllText(Progress, System.DateTime.Now.ToString("HH:mm:ss") + " game " + now.ToString("0") + "s attempt " + (current + 1) + "/" + plan.Count +
-                " " + director.Level.Goal + " sorted " + director.Level.Sorted + " errors " + errors + "\n");
+                " sorted " + director.Level.Sorted + " errors " + errors + "\n");
         }
         if (nextAt >= 0f && now >= nextAt)
         {
@@ -126,16 +123,13 @@ public static class AlleyBotRun
         hooked = true;
         // AlleyBatch.BotFilm skips the numbers and only films.
         bool filmOnly = SessionState.GetBool("JuicyBotFilmOnly", false);
-        foreach (LevelGoal goal in filmOnly ? new LevelGoal[0] : Goals)
+        if (!filmOnly)
         {
-            for (int i = 0; i < Attempts; i++) plan.Add(new Run { Goal = goal, Mistakes = Careful });
-            for (int i = 0; i < Attempts; i++) plan.Add(new Run { Goal = goal, Mistakes = Sloppy });
+            for (int i = 0; i < Attempts; i++) plan.Add(new Run { Mistakes = Careful });
+            for (int i = 0; i < Attempts; i++) plan.Add(new Run { Mistakes = Sloppy });
         }
-        foreach (LevelGoal goal in Goals)
-        {
-            plan.Add(new Run { Goal = goal, Mistakes = FilmWinMistakes, Film = true, WantWin = true });
-            plan.Add(new Run { Goal = goal, Mistakes = FilmFailMistakes, Film = true, WantWin = false });
-        }
+        plan.Add(new Run { Mistakes = FilmWinMistakes, Film = true, WantWin = true });
+        plan.Add(new Run { Mistakes = FilmFailMistakes, Film = true, WantWin = false });
         director.AttemptEnded += level => Ended(director, level);
         FilmEveryFrame(true);
         Next(director);
@@ -163,18 +157,17 @@ public static class AlleyBotRun
             Time.timeScale = Speed;
         }
         attemptStart = Time.time;
-        director.Retry(run.Goal);
+        director.Retry();
     }
 
     static void Ended(AlleyChuteDirector director, LevelRules level)
     {
         Run run = plan[current];
         bool won = level.State == LevelState.Won;
-        string line = run.Goal + " mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
+        string line = "mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
             " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost +
-            (won ? " margin " + level.Margin.ToString("0") + MarginUnit(level.Goal) : " short " + level.ShortBy) +
-            " length " + level.Elapsed.ToString("0") + "s peak heat " + level.PeakHeat.ToString("0") +
-            " balance " + director.Rules.Balance.ToString("0");
+            (won ? " spare " + level.GemsLeft : " short " + level.ShortBy) +
+            " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0");
         if (!run.Film)
         {
             lines.Add(line);
@@ -196,18 +189,8 @@ public static class AlleyBotRun
         nextAt = Time.time + 0.5f;
     }
 
-    static string MarginUnit(LevelGoal goal)
-    {
-        switch (goal)
-        {
-            case LevelGoal.Heat: return " heat below the bust";
-            case LevelGoal.Clock: return " s left";
-            default: return " gems unused";
-        }
-    }
-
     static string FilmFolder(Run run, bool done) =>
-        FilmRoot + "/" + run.Goal.ToString().ToLowerInvariant() + "-" + (run.WantWin ? "won" : "failed") + (done ? "" : "-ring");
+        FilmRoot + "/" + (run.WantWin ? "won" : "failed") + (done ? "" : "-ring");
 
     // During a film attempt, every frame goes into a ring of the last
     // FilmSeconds, and the result panel is filmed after the end. Then the ring
@@ -218,7 +201,7 @@ public static class AlleyBotRun
         Run run = plan[current];
         var director = Object.FindAnyObjectByType<AlleyChuteDirector>();
         if (director == null) return;
-        if (!homeTaken && run.Goal == LevelGoal.Heat && Time.time - attemptStart >= 20f)
+        if (!homeTaken && run.WantWin && Time.time - attemptStart >= 20f)
         {
             homeTaken = true;
             AlleySceneBuilder.Capture(HomeStill);
@@ -300,15 +283,13 @@ public static class AlleyBotRun
     {
         var log = new System.Text.StringBuilder();
         var level = director.Level;
-        log.AppendLine("level target " + level.Target + " gems; clock " + level.Seconds.ToString("0") + "s with " + LevelRules.MistakeSeconds.ToString("0") +
-            "s per lost gem; limited goal drops " + level.GemLimit + " gems");
-        log.AppendLine("numbers at " + Speed + "x, " + Attempts + " attempts per goal per bot; film at 1x, " + FilmFps + " fps");
+        log.AppendLine("level target " + level.Target + " of " + level.GemLimit + " gems, seed " + LevelRules.DefaultSeed);
+        log.AppendLine("numbers at " + Speed + "x, " + Attempts + " attempts per bot; film at 1x, " + FilmFps + " fps");
         log.AppendLine("game seconds " + now.ToString("0") + "; spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses);
         log.AppendLine();
         log.AppendLine("summary:");
-        foreach (LevelGoal goal in Goals)
-            foreach (float mistakes in new[] { Careful, Sloppy })
-                log.AppendLine("  " + Summary(goal, mistakes));
+        foreach (float mistakes in new[] { Careful, Sloppy })
+            log.AppendLine("  " + Summary(mistakes));
         log.AppendLine();
         log.AppendLine("attempts:");
         foreach (string line in lines) log.AppendLine("  " + line);
@@ -321,9 +302,9 @@ public static class AlleyBotRun
         return log.ToString();
     }
 
-    static string Summary(LevelGoal goal, float mistakes)
+    static string Summary(float mistakes)
     {
-        string key = goal + " mistakes " + mistakes.ToString("0.00") + " ";
+        string key = "mistakes " + mistakes.ToString("0.00") + " ";
         int wins = 0, total = 0;
         foreach (string line in lines)
         {
