@@ -10,7 +10,7 @@ A diegetic color sort game with casino style juice: everything happens inside th
 
 ## How it plays today
 
-- **The alley plays as one level** (T-028, goal C picked by Anthony 2026-11-26). 90 gems fall, and the level asks for 75 of them sorted correctly, so 15 can be lost. It is won at the 75th correct sort, and failed the moment a 16th gem is lost, since 75 can then no longer be reached. The gems come in the same color order on every attempt (`LevelRules`, seeded), so a fail is the player's doing. An attempt lasts about 75 to 80 seconds.
+- **The alley plays as one level** (T-028, goal C picked by Anthony 2026-11-26). 90 gems fall, and the level asks for 75 of them sorted correctly, so 15 can be lost. It is won at the 75th correct sort, and failed the moment a 16th gem is lost, since 75 can then no longer be reached. The gems come in the same color order on every attempt (`LevelRules`, seeded), so a fail is the player's doing. A won attempt lasts about 75 seconds; a failed one ends sooner, often in 30 to 45.
 - Gems fall from invisible chutes above the street. One chute opens at the start and one more each leg, up to four. A leg is four vat fills.
 - Swipe left or right to send a gem into that side's deposit chest (crimson left, indigo right). Swipe up to trash it. A wrong sort, a trash or a miss loses that gem.
 - The top of the screen shows gems sorted against the target and the misses left, which turn red at 3. When an attempt ends, a panel shows LEVEL WON with the misses to spare, or TOO MANY MISSES with how many gems short. Tap anywhere to try again. A fail costs only the attempt: cash and gear carry over.

@@ -26,7 +26,7 @@ public class LevelRulesTests
         Assert.AreEqual(LevelState.Won, level.State);
         Assert.AreSame(level, ended);
         Assert.AreEqual(0, level.ShortBy);
-        Assert.AreEqual(10, level.GemsLeft);
+        Assert.AreEqual(10, level.MissesLeft);
     }
 
     [Test]

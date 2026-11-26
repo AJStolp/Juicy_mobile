@@ -50,9 +50,6 @@ public class LevelRules
 
     public bool Playing => State == LevelState.Playing;
 
-    // Gems still to fall.
-    public int GemsLeft => Math.Max(0, GemLimit - Dropped);
-
     // Gems the player can still lose and win. On a win, the ones never needed.
     public int MissesLeft => Math.Max(0, GemLimit - Target - Lost);
 
