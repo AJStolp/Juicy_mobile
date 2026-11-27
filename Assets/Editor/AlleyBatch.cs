@@ -206,7 +206,7 @@ public static class AlleyBatch
     }
 
     // Plays the map through on the real save (backed up and put back):
-    // stills of both looks with nothing and three levels beaten, a locked stop
+    // stills of the board with nothing and three levels beaten, a locked stop
     // refusing a tap, an open stop starting its level, a forced win, the clue
     // scratched off (half, then all), the map coming back with the next stop
     // open, the clue on the board and the save holding both; then the vault:
@@ -341,7 +341,6 @@ public static class AlleyBatch
                 settings.Close();
                 MapExpect(!settings.Showing && map.Showing, "closing settings leaves the map");
                 director.Progress.Restore(0);
-                map.SetLook(AlleyMap.Look.Board);
                 map.Show();
                 MapStep(2);
                 return;
@@ -356,20 +355,6 @@ public static class AlleyBatch
                 return;
             case 3:
                 AlleySceneBuilder.Capture("/tmp/juicy-map-board-3.png");
-                director.Progress.Restore(0);
-                map.SetLook(AlleyMap.Look.Streets);
-                map.Show();
-                MapStep(4);
-                return;
-            case 4:
-                AlleySceneBuilder.Capture("/tmp/juicy-map-streets-0.png");
-                director.Progress.Restore(3);
-                map.Show();
-                MapStep(5);
-                return;
-            case 5:
-                AlleySceneBuilder.Capture("/tmp/juicy-map-streets-3.png");
-                map.SetLook(AlleyMap.Look.Board);
                 director.Progress.Restore(2);
                 director.CaseFile.Restore(new[] { ClueRules.MaxTier, 1 });
                 map.Show();
@@ -571,7 +556,7 @@ public static class AlleyBatch
                 UnityEngine.Application.logMessageReceived -= CountMapError;
                 MapExpect(mapErrors == 0, "no errors logged during play (" + mapErrors + (mapErrors > 0 ? ", first: " + mapFirstError : "") + ")");
                 System.IO.File.WriteAllText(MapReport, (mapOk ? "PASS" : "FAIL") + " map check\n" + mapLog +
-                    "stills /tmp/juicy-title.png /tmp/juicy-settings.png /tmp/juicy-map-{board-0,board-3,streets-0,streets-3,playing,won,after-win,vault-open,vault-cracked}.png " +
+                    "stills /tmp/juicy-title.png /tmp/juicy-settings.png /tmp/juicy-map-{board-0,board-3,playing,won,after-win,vault-open,vault-cracked}.png " +
                     "/tmp/juicy-reveal-{covered,half,done,smudged}.png /tmp/juicy-finale.png /tmp/juicy-vault-cracked.png /tmp/juicy-fail-offer.png /tmp/juicy-out-of-lives.png\n");
                 SessionState.SetInt(MapStepKey, 90);
                 EditorApplication.isPlaying = false;

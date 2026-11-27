@@ -5,16 +5,10 @@ using UnityEngine.InputSystem;
 // The city's map: its six levels in order and the vault after them. Play
 // starts here, a won level comes back here with the next one open, and a tap
 // on an open stop plays it. Drawn in front of the camera (CameraOverlay) over
-// the alley.
-//
-// Prototype for T-035: two looks, switched by the bar along the bottom.
-//   Board:   the crime board. Stops are photos pinned to cork and joined by
-//            red string; a beaten stop's photo shows the clue found there.
-//   Streets: a night street map with the stops as gem shaped pins on a route.
+// the alley as a crime board: the stops are photos pinned to cork and joined
+// by red string, and a beaten stop's photo shows the clue found there.
 public class AlleyMap : MonoBehaviour
 {
-    public enum Look { Board, Streets }
-
     // Level 1 at the bottom, climbing to the vault at the top.
     static readonly Vector2[] Stops =
     {
@@ -26,15 +20,12 @@ public class AlleyMap : MonoBehaviour
     static readonly Color Ink = new Color(0.08f, 0.07f, 0.06f);
     static readonly Color Paper = new Color(0.97f, 0.95f, 0.9f);
     static readonly Color Neon = new Color(1f, 0.85f, 0.25f);
-    static readonly Color Done = new Color(0.35f, 0.95f, 0.5f);
-    static readonly Color Locked = new Color(0.32f, 0.34f, 0.4f);
 
     const float Distance = 0.35f;
     const float TapGuard = 0.3f;
 
     [SerializeField] AlleyChuteDirector director;
     [SerializeField] Material panelMaterial;
-    [SerializeField] Look look = Look.Board;
     [SerializeField] AlleySettings settings;
 
     CameraOverlay overlay;
@@ -43,7 +34,6 @@ public class AlleyMap : MonoBehaviour
     GameObject content;
     Renderer[] stopHits;
     Renderer vaultHit;
-    Renderer switchHit;
     Renderer settingsHit;
     // Lives and cash along the top, and the panel shown when a level is
     // tapped with no lives left.
@@ -110,12 +100,6 @@ public class AlleyMap : MonoBehaviour
         if (outOfLives != null) outOfLives.SetActive(false);
     }
 
-    public void SetLook(Look next)
-    {
-        look = next;
-        if (Showing) Build();
-    }
-
     // Plays the vault once every level is beaten (again after it is cracked).
     public bool ChooseVault()
     {
@@ -165,12 +149,6 @@ public class AlleyMap : MonoBehaviour
             settings.Open();
             return;
         }
-        if (overlay.ScreenRect(switchHit).Contains(tap))
-        {
-            JuicyAudioHooks.Tap();
-            SetLook(look == Look.Board ? Look.Streets : Look.Board);
-            return;
-        }
         for (int i = 0; i < stopHits.Length; i++)
             if (overlay.ScreenRect(stopHits[i]).Contains(tap) && Choose(i)) return;
         if (vaultHit != null && overlay.ScreenRect(vaultHit).Contains(tap)) ChooseVault();
@@ -179,14 +157,13 @@ public class AlleyMap : MonoBehaviour
     void Build()
     {
         if (content != null) Destroy(content);
-        content = new GameObject("Map_" + look);
+        content = new GameObject("Map");
         content.transform.SetParent(transform, false);
         pulse = null;
         vaultHit = null;
         stopHits = new Renderer[director.Place.Count];
-        if (look == Look.Board) BuildBoard(content.transform);
-        else BuildStreets(content.transform);
-        BuildSwitch(content.transform);
+        BuildBoard(content.transform);
+        BuildSettingsButton(content.transform);
         BuildTopBar(content.transform);
     }
 
@@ -269,7 +246,7 @@ public class AlleyMap : MonoBehaviour
         }
     }
 
-    // State of a stop, for both looks.
+    // State of a stop.
     enum StopState { Beaten, Open, Locked }
 
     StopState StateOf(int index)
@@ -370,74 +347,12 @@ public class AlleyMap : MonoBehaviour
         caption.text = VaultCaption();
     }
 
-    void BuildStreets(Transform root)
+    void BuildSettingsButton(Transform root)
     {
-        overlay.Quad(root, "Night", new Vector2(0.5f, 0.5f), new Vector2(1.3f, 1.3f), new Color(0.04f, 0.06f, 0.11f), 0.006f);
-        Color street = new Color(0.1f, 0.14f, 0.23f);
-        for (float y = 0.08f; y < 1f; y += 0.11f)
-            overlay.Line(root, "Street_" + y.ToString("0.00"), new Vector2(-0.1f, y), new Vector2(1.1f, y), 0.012f, street, 0.005f);
-        for (float x = 0.1f; x < 1f; x += 0.2f)
-            overlay.Line(root, "Avenue_" + x.ToString("0.0"), new Vector2(x, -0.1f), new Vector2(x, 1.1f), 0.02f, street, 0.005f);
-        TextMeshPro title = overlay.Text(root, "Title", new Vector2(0.5f, 0.935f), new Vector2(0.8f, 0.045f), Neon);
-        title.text = "THE CITY";
-
-        int levels = director.Place.Count;
-        for (int i = 0; i + 1 < Stops.Length && i < levels; i++)
-        {
-            bool live = StateOf(i) == StopState.Beaten;
-            overlay.Line(root, "Route_" + i, Stops[i], Stops[i + 1], 0.008f, live ? Neon : new Color(0.3f, 0.32f, 0.38f), 0.003f);
-        }
-        for (int i = 0; i < levels && i < Stops.Length - 1; i++) StreetStop(root, i);
-        StreetVault(root);
-    }
-
-    // A square on screen, sized by its width in viewport widths.
-    static Vector2 Square(float width) => new Vector2(width, width * 9f / 16f);
-
-    void StreetStop(Transform root, int index)
-    {
-        Vector2 at = Stops[index];
-        StopState state = StateOf(index);
-        Color fill = state == StopState.Beaten ? Done : state == StopState.Open ? Neon : Locked;
-        overlay.Quad(root, "Glow_" + index, at, Square(0.17f), new Color(fill.r, fill.g, fill.b, 0.25f), 0.0025f, 45f);
-        Renderer pin = overlay.Quad(root, "Pin_" + index, at, Square(0.12f), fill, 0.002f, 45f);
-        stopHits[index] = pin;
-        TextMeshPro number = overlay.Text(root, "Number_" + index, at, new Vector2(0.1f, 0.04f), state == StopState.Locked ? new Color(0.7f, 0.72f, 0.78f) : Ink);
-        number.outlineWidth = 0f;
-        number.text = (index + 1).ToString();
-        TextMeshPro label = overlay.Text(root, "Label_" + index, at + new Vector2(0f, -0.06f), new Vector2(0.3f, 0.025f), Color.white);
-        label.text = state == StopState.Open ? "PLAY" : director.Place.Level(index).Name.ToUpperInvariant();
-        if (state == StopState.Open)
-        {
-            pulse = pin.transform;
-            pulseBase = pin.transform.localScale;
-            label.color = Neon;
-        }
-    }
-
-    void StreetVault(Transform root)
-    {
-        Vector2 at = Stops[Stops.Length - 1];
-        bool open = director.Progress.VaultOpen;
-        bool cracked = director.Progress.VaultCracked;
-        vaultHit = overlay.Quad(root, "Vault", at, Square(0.2f), cracked ? Done : open ? Neon : Locked, 0.002f);
-        TextMeshPro big = overlay.Text(root, "Vault_Label", at, new Vector2(0.18f, 0.03f), open ? Ink : Color.white);
-        big.outlineWidth = open ? 0f : big.outlineWidth;
-        big.text = "VAULT";
-        TextMeshPro caption = overlay.Text(root, "Vault_Caption", at + new Vector2(0f, -0.075f), new Vector2(0.4f, 0.022f), Color.white);
-        caption.text = VaultCaption();
-    }
-
-    // Prototype only: switches between the two looks.
-    void BuildSwitch(Transform root)
-    {
-        switchHit = overlay.Quad(root, "Switch", new Vector2(0.36f, 0.045f), new Vector2(0.62f, 0.045f), new Color(0f, 0f, 0f, 0.7f), 0.001f);
-        TextMeshPro label = overlay.Text(root, "Switch_Label", new Vector2(0.36f, 0.045f), new Vector2(0.58f, 0.024f), Color.white);
-        label.text = "LOOK: " + (look == Look.Board ? "BOARD" : "STREETS") + " (TAP)";
         settingsHit = null;
         if (settings == null) return;
-        settingsHit = overlay.Quad(root, "Settings", new Vector2(0.835f, 0.045f), new Vector2(0.27f, 0.045f), new Color(0f, 0f, 0f, 0.7f), 0.001f);
-        TextMeshPro gear = overlay.Text(root, "Settings_Label", new Vector2(0.835f, 0.045f), new Vector2(0.24f, 0.024f), Color.white);
+        settingsHit = overlay.Quad(root, "Settings", new Vector2(0.5f, 0.045f), new Vector2(0.36f, 0.045f), new Color(0f, 0f, 0f, 0.7f), 0.001f);
+        TextMeshPro gear = overlay.Text(root, "Settings_Label", new Vector2(0.5f, 0.045f), new Vector2(0.32f, 0.024f), Color.white);
         gear.text = "SETTINGS";
     }
 }
