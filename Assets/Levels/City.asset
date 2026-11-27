@@ -58,7 +58,7 @@ MonoBehaviour:
   - Name: City 5
     Hint: 
     Target: 80
-    Misses: 6
+    Misses: 9
     Seed: 5
     Dynamite: 16
     Cash: 4
