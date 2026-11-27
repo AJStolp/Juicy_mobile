@@ -3,8 +3,9 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 
 // Runs one level of the heist sort in the alley. Gems, dynamite and gold fall
-// from the open chutes; the player swipes left or right to send one into that
-// side's color chest, or up to flick it away. HeistSortRules decides what each
+// from the open chutes, which take turns; the player swipes left or right to
+// send one into that side's color chest, down into the chest below it, or up
+// to flick it away. HeistSortRules decides what each
 // outcome is worth, and LevelRules decides the order things fall in and when
 // the attempt is won or failed. After the city's six levels it plays the
 // vault, the boss: its sort turns the vault door, and the keypad finale
@@ -44,6 +45,7 @@ public class AlleyChuteDirector : MonoBehaviour
     float botReadyAt;
     Camera view;
     float spawnTimer;
+    ChuteTurns chuteTurns;
     bool pressing;
     Vector2 pressStart;
 
@@ -280,6 +282,7 @@ public class AlleyChuteDirector : MonoBehaviour
         LevelSpec spec = IsBoss ? place.Boss : place.Level(levelIndex);
         Rules.MaxChutes = Mathf.Clamp(spec.MaxChutes, 1, drops.Length);
         Level = new LevelRules(Rules, spec) { HoldsWin = IsBoss };
+        chuteTurns = new ChuteTurns(spec.Seed);
         if (!IsBoss) return;
         // The sort locks the first six stages; the finale turns the wheel.
         Vault.Reset(Mathf.CeilToInt(spec.Target / (float)(VaultProgress.Stages - 1)));
@@ -382,8 +385,7 @@ public class AlleyChuteDirector : MonoBehaviour
         spawnTimer = 0f;
 
         AlleyItem item = idle.Dequeue();
-        int chute = Mathf.Min((int)(next.ChuteRoll * Rules.Chutes), Rules.Chutes - 1);
-        Transform drop = drops[ChuteOrder[chute]];
+        Transform drop = drops[ChuteOrder[chuteTurns.Next(Rules.Chutes)]];
         item.Launch(next.Kind, next.ColorId, GemColor(next.ColorId), '\0', drop.position);
         live.Add(item);
         launchedAt[item] = Time.time;
@@ -442,9 +444,14 @@ public class AlleyChuteDirector : MonoBehaviour
             item.BeginTrash(trashTime);
             return;
         }
-        int side = direction < 0 ? 0 : 1;
+        // Down goes into whichever chest the item is falling over.
+        int side = direction == HeistSortRules.Down ? SideBelow(item.transform.position) : direction < 0 ? 0 : 1;
         item.BeginFlight(side, bins[side].Mouth, flightTime);
     }
+
+    // The chest nearest across the street.
+    int SideBelow(Vector3 position) =>
+        Mathf.Abs(position.x - bins[0].Mouth.x) <= Mathf.Abs(position.x - bins[1].Mouth.x) ? 0 : 1;
 
     void TickItems(float dt)
     {

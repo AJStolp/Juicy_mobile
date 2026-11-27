@@ -24,7 +24,6 @@ public class LevelRules
     {
         public ItemKind Kind;
         public int ColorId;
-        public float ChuteRoll;
     }
 
     readonly HeistSortRules rules;
@@ -94,8 +93,7 @@ public class LevelRules
         foreach (ItemKind kind in kinds)
         {
             int color = random.Next(HeistSortRules.Sides);
-            float chute = (float)random.NextDouble();
-            order.Add(new Item { Kind = kind, ColorId = kind == ItemKind.Gem ? color : 0, ChuteRoll = chute });
+            order.Add(new Item { Kind = kind, ColorId = kind == ItemKind.Gem ? color : 0 });
         }
     }
 
@@ -207,7 +205,7 @@ public class LevelRules
     // still to come, so it is never lost uncounted.
     public void Return(ItemKind kind, int colorId)
     {
-        order.Add(new Item { Kind = kind, ColorId = kind == ItemKind.Gem ? colorId : 0, ChuteRoll = 0.5f });
+        order.Add(new Item { Kind = kind, ColorId = kind == ItemKind.Gem ? colorId : 0 });
     }
 
     // Keeps a failed attempt going with `extraGems` more gems to sort, added
@@ -217,7 +215,7 @@ public class LevelRules
         if (State != LevelState.Failed || FailedAtFinale || extraGems <= 0) return false;
         var random = new Random(Spec.Seed * 7919 + Continues + 1);
         for (int i = 0; i < extraGems; i++)
-            order.Add(new Item { Kind = ItemKind.Gem, ColorId = random.Next(HeistSortRules.Sides), ChuteRoll = (float)random.NextDouble() });
+            order.Add(new Item { Kind = ItemKind.Gem, ColorId = random.Next(HeistSortRules.Sides) });
         Gems += extraGems;
         Continues++;
         State = LevelState.Playing;

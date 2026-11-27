@@ -102,13 +102,15 @@ public class HeistSortRules
         return 0;
     }
 
-    // -1 left, +1 right, 2 up (trash), 0 nothing.
+    // -1 left, +1 right, 2 up (trash), Down (into the chest below), 0 nothing.
+    public const int Down = 3;
+
     public static int FlickDirection(Vector2 start, Vector2 end, float minDistance)
     {
         Vector2 delta = end - start;
         if (delta.magnitude < minDistance) return 0;
         if (Mathf.Abs(delta.y) > Mathf.Abs(delta.x))
-            return delta.y > 0f ? 2 : 0;
+            return delta.y > 0f ? 2 : Down;
         return delta.x < 0f ? -1 : 1;
     }
 
