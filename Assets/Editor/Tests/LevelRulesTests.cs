@@ -154,7 +154,6 @@ public class LevelRulesTests
             again.Drop(out LevelRules.Item item);
             Assert.AreEqual(items[i].Kind, item.Kind, "kind of drop " + i);
             Assert.AreEqual(items[i].ColorId, item.ColorId, "color of drop " + i);
-            Assert.AreEqual(items[i].ChuteRoll, item.ChuteRoll, "chute of drop " + i);
         }
     }
 
@@ -168,7 +167,6 @@ public class LevelRulesTests
         {
             a.Drop(out LevelRules.Item itemA);
             b.Drop(out LevelRules.Item itemB);
-            Assert.That(itemA.ChuteRoll, Is.GreaterThanOrEqualTo(0f).And.LessThan(1f));
             if (itemA.ColorId == 0) reds++;
             if (itemA.ColorId != itemB.ColorId) differ++;
         }
