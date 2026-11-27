@@ -206,7 +206,7 @@ public static class AlleyBatch
     }
 
     // Plays the map through on the real save (backed up and put back):
-    // stills of both looks with nothing and three levels beaten, a locked stop
+    // stills of the board with nothing and three levels beaten, a locked stop
     // refusing a tap, an open stop starting its level, a forced win, the clue
     // scratched off (half, then all), the map coming back with the next stop
     // open, the clue on the board and the save holding both; then the vault:

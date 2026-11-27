@@ -20,8 +20,6 @@ public class AlleyMap : MonoBehaviour
     static readonly Color Ink = new Color(0.08f, 0.07f, 0.06f);
     static readonly Color Paper = new Color(0.97f, 0.95f, 0.9f);
     static readonly Color Neon = new Color(1f, 0.85f, 0.25f);
-    static readonly Color Done = new Color(0.35f, 0.95f, 0.5f);
-    static readonly Color Locked = new Color(0.32f, 0.34f, 0.4f);
 
     const float Distance = 0.35f;
     const float TapGuard = 0.3f;
