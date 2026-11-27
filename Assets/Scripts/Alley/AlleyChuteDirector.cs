@@ -405,11 +405,13 @@ public class AlleyChuteDirector : MonoBehaviour
         if (!pressing || !pointer.press.wasReleasedThisFrame) return;
         pressing = false;
         int direction = HeistSortRules.FlickDirection(pressStart, position, Screen.height * minSwipe);
-        if (direction != 0) Fling(Pick(pressStart), direction);
+        // A swipe down picks its chest from where the gem is, so it needs a gem under the press.
+        if (direction != 0) Fling(Pick(pressStart, direction == HeistSortRules.Down), direction);
     }
 
-    // The falling item under the press, or else the one closest to the ground.
-    AlleyItem Pick(Vector2 screen)
+    // The falling item under the press, or else (unless underOnly) the one
+    // closest to the ground.
+    AlleyItem Pick(Vector2 screen, bool underOnly)
     {
         AlleyItem nearest = null;
         AlleyItem lowest = null;
@@ -432,7 +434,7 @@ public class AlleyChuteDirector : MonoBehaviour
                 lowest = item;
             }
         }
-        return nearest != null ? nearest : lowest;
+        return nearest != null || underOnly ? nearest : lowest;
     }
 
     void Fling(AlleyItem item, int direction)

@@ -103,14 +103,17 @@ public class HeistSortRules
     }
 
     // -1 left, +1 right, 2 up (trash), Down (into the chest below), 0 nothing.
+    // Down needs a clearly vertical swipe; a steep diagonal swipe down goes to
+    // the side it leans toward, so a curving thumb never lands in the wrong chest.
     public const int Down = 3;
 
     public static int FlickDirection(Vector2 start, Vector2 end, float minDistance)
     {
         Vector2 delta = end - start;
         if (delta.magnitude < minDistance) return 0;
-        if (Mathf.Abs(delta.y) > Mathf.Abs(delta.x))
-            return delta.y > 0f ? 2 : Down;
+        float across = Mathf.Abs(delta.x);
+        if (delta.y > across) return 2;
+        if (-delta.y > 2f * across) return Down;
         return delta.x < 0f ? -1 : 1;
     }
 

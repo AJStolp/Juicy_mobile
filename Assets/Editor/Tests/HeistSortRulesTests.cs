@@ -188,6 +188,9 @@ public class HeistSortRulesTests
         Assert.AreEqual(1, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(200, -10), 80));
         Assert.AreEqual(2, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(10, 200), 80));
         Assert.AreEqual(HeistSortRules.Down, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(10, -200), 80));
+        // A steep diagonal swipe down goes to the side it leans toward.
+        Assert.AreEqual(-1, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(-120, -200), 80));
+        Assert.AreEqual(1, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(120, -200), 80));
         Assert.AreEqual(0, HeistSortRules.FlickDirection(Vector2.zero, new Vector2(30, 0), 80));
     }
 }
