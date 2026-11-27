@@ -4,7 +4,9 @@ public class VaultProgressTests
 {
     static VaultProgress Vault(int turnsPerStage)
     {
-        return new VaultProgress { TurnsByHeist = new[] { turnsPerStage } };
+        var vault = new VaultProgress();
+        vault.Reset(turnsPerStage);
+        return vault;
     }
 
     [Test]
@@ -29,59 +31,46 @@ public class VaultProgressTests
         int locks = 0;
         vault.StageLocked += _ => locks++;
         vault.Turn(2);
-        vault.Turn(ClueRules.PerfectHackTurns);
+        vault.Turn(4);
         Assert.AreEqual(2, locks);
         Assert.AreEqual(2, vault.Stage);
         Assert.AreEqual(0, vault.Turns);
     }
 
     [Test]
-    public void BustTakesBackHalfOfTheCurrentStageOnly()
-    {
-        var vault = Vault(10);
-        vault.Turn(10);
-        vault.Turn(6);
-        float rolledTo = -1f;
-        vault.RolledBack += (_, f) => rolledTo = f;
-        vault.Bust();
-        Assert.AreEqual(1, vault.Stage);
-        Assert.AreEqual(3, vault.Turns);
-        Assert.AreEqual(0.3f, rolledTo, 1e-4f);
-    }
-
-    [Test]
-    public void BustWithNothingToLoseDoesNothing()
-    {
-        var vault = Vault(10);
-        vault.Turn(10);
-        bool rolled = false;
-        vault.RolledBack += (_, __) => rolled = true;
-        vault.Bust();
-        Assert.IsFalse(rolled);
-        Assert.AreEqual(1, vault.Stage);
-    }
-
-    [Test]
-    public void LockingTheLastStageCracksTheVaultAndStartsTheNextHeist()
+    public void LockingTheLastStageCracksItOnce()
     {
         var vault = Vault(2);
-        int cracked = 0;
-        vault.Cracked += h => cracked = h;
-        vault.Turn(2 * VaultProgress.Stages - 1);
-        Assert.AreEqual(0, cracked);
-        vault.Turn(1 + ClueRules.PerfectHackTurns);
-        Assert.AreEqual(1, cracked);
-        Assert.AreEqual(2, vault.Heist);
-        Assert.AreEqual(0, vault.Stage);
-        Assert.AreEqual(0, vault.Turns);
+        int cracks = 0;
+        vault.Cracked += () => cracks++;
+        vault.Turn(2 * VaultProgress.Stages);
+        Assert.IsTrue(vault.IsCracked);
+        Assert.AreEqual(1, cracks);
+        vault.Turn(5);
+        Assert.AreEqual(1, cracks, "a cracked vault takes no more turns");
+        Assert.AreEqual(1f, vault.StageFraction);
     }
 
     [Test]
-    public void LaterVaultsTakeMoreTurns()
+    public void LockThroughShowsTheSortDoneAndLeavesTheWheel()
     {
-        var vault = new VaultProgress();
-        Assert.Less(vault.TurnsFor(1), vault.TurnsFor(2));
-        Assert.Less(vault.TurnsFor(2), vault.TurnsFor(3));
-        Assert.AreEqual(vault.TurnsFor(3), vault.TurnsFor(9));
+        var vault = Vault(5);
+        vault.Turn(3);
+        vault.LockThrough(VaultProgress.Stages - 1);
+        Assert.AreEqual(VaultProgress.Stages - 1, vault.Stage);
+        Assert.AreEqual(0, vault.Turns);
+        Assert.IsFalse(vault.IsCracked);
+    }
+
+    [Test]
+    public void ResetStartsAFreshDoor()
+    {
+        var vault = Vault(2);
+        vault.Turn(2 * VaultProgress.Stages);
+        vault.Reset(4);
+        Assert.AreEqual(0, vault.Stage);
+        Assert.AreEqual(0, vault.Turns);
+        Assert.AreEqual(4, vault.TurnsPerStage);
+        Assert.IsFalse(vault.IsCracked);
     }
 }

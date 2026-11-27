@@ -2,12 +2,20 @@ using System.Collections.Generic;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using UnityEngine.LowLevel;
+using UnityEngine.PlayerLoop;
 
-// Verification run for the alley game. Touch /tmp/juicy-alley-bot-run and the
-// open editor enters Play mode with the director on auto play at 4x speed. It
-// plays until the first vault cracks (or 25 game minutes), captures frames at
-// the big moments, writes /tmp/juicy-bot.txt, then stops. Times in the report
-// are game seconds, so they read as a real player's pace.
+// Verification run for the place's levels. Touch /tmp/juicy-alley-bot-run and
+// the open editor enters Play mode with the director on auto play. It plays
+// level attempts in two parts, then writes /tmp/juicy-bot.txt and stops:
+//   1. Numbers: for every level of the place, Attempts tries by a careful bot
+//      (10% mistakes) and a sloppy one (30%), at 4x. Each attempt's result,
+//      gems to spare or short, and length in game seconds.
+//   2. Film: one won and one failed attempt of City 4 (FilmLevel) at 1x with a fixed 30 frames per
+//      game second. The last FilmSeconds of the attempt and the result panel
+//      after it land in /tmp/juicy-level-film/<won|failed>/ as numbered jpgs,
+//      ready for ffmpeg.
+// Times in the report are game seconds, so they read as a real player's pace.
 [InitializeOnLoad]
 public static class AlleyBotRun
 {
@@ -15,24 +23,54 @@ public static class AlleyBotRun
     const string AutoPlayFlag = "/tmp/juicy-alley-bot";
     const string Report = "/tmp/juicy-bot.txt";
     const string Progress = "/tmp/juicy-bot-progress.txt";
+    const string FilmRoot = "/tmp/juicy-level-film";
+    const string HomeStill = "/tmp/juicy-level-home.png";
+    const string BannerStill = "/tmp/juicy-level-banner.png";
+    const string DynamiteStill = "/tmp/juicy-level-dynamite.png";
+    const string GoldStill = "/tmp/juicy-level-cash.png";
     const float Speed = 4f;
-    const float MaxGameSeconds = 1500f;
-    const float AfterCrack = 6f;
+    const int Attempts = 8;
+    // City 4: the first level with dynamite and gold both, so the films show every item.
+    const int FilmLevel = 3;
+    const float Careful = 0.1f;
+    const float Sloppy = 0.3f;
+    const float FilmWinMistakes = 0.05f;
+    const float FilmFailMistakes = 0.2f;
+    const int FilmTries = 3;
+    const int FilmFps = 30;
+    const float FilmSeconds = 12f;
+    const float ResultSeconds = 3f;
+    const float MaxGameSeconds = 7200f;
+
+    struct Run
+    {
+        public int Level;
+        public float Mistakes;
+        public bool Film;
+        public bool WantWin;
+    }
 
     static int errors;
     static string firstError = "";
 
     // Play session state. Statics reset on entering Play, so these start clean.
     static bool hooked;
-    static readonly List<string> events = new List<string>();
-    static readonly List<float> lockTimes = new List<float>();
-    static float crackTime = -1f;
-    static int maxDynamite;
-    static readonly Dictionary<string, float> shots = new Dictionary<string, float>();
+    static readonly List<Run> plan = new List<Run>();
+    static readonly List<string> lines = new List<string>();
+    static readonly List<string> filmLines = new List<string>();
+    static int current = -1;
+    static int filmTry;
+    static float nextAt = -1f;
     static float nextProgress;
-    static int hacks;
-    static int perfectHacks;
-    static int hackSteps;
+    static float attemptStart;
+    static int ring;
+    static int afterEnd = -1;
+    static bool homeTaken;
+    static bool bannerTaken;
+    static bool dynamiteTaken;
+    static bool goldTaken;
+    static RenderTexture filmBuffer;
+    static Texture2D filmImage;
 
     static AlleyBotRun()
     {
@@ -63,6 +101,7 @@ public static class AlleyBotRun
             File.Delete(RunFlag);
             File.WriteAllText(AutoPlayFlag, "on");
             File.WriteAllText(Progress, "entering play " + System.DateTime.Now.ToString("HH:mm:ss") + "\n");
+            if (Directory.Exists(FilmRoot)) Directory.Delete(FilmRoot, true);
             SessionState.SetBool("JuicyBot", true);
             EditorApplication.isPlaying = true;
             return;
@@ -70,186 +109,271 @@ public static class AlleyBotRun
 
         if (!SessionState.GetBool("JuicyBot", false)) return;
         var director = Object.FindAnyObjectByType<AlleyChuteDirector>();
-        if (director == null || director.Rules == null) return;
+        if (director == null || director.Rules == null || director.Level == null) return;
         if (!hooked) Hook(director);
 
         float now = Time.time;
         if (now >= nextProgress)
         {
             nextProgress = now + 10f;
-            File.AppendAllText(Progress, System.DateTime.Now.ToString("HH:mm:ss") + " game " + now.ToString("0") + "s stage " + director.Vault.Stage +
-                " turns " + director.Vault.Turns + " leg " + director.Rules.Leg + " errors " + errors + "\n");
+            File.AppendAllText(Progress, System.DateTime.Now.ToString("HH:mm:ss") + " game " + now.ToString("0") + "s attempt " + (current + 1) + "/" + plan.Count +
+                " sorted " + director.Level.Sorted + " errors " + errors + "\n");
         }
-        maxDynamite = Mathf.Max(maxDynamite, director.Rules.GearCount(GearKind.Dynamite));
-        if (now >= 12f) Shoot("street", now, 0f);
-        var hack = Object.FindAnyObjectByType<AlleyHack>();
-        if (hack != null && hack.Running) Shoot("hack", now, 1.5f);
-
-        var due = new List<string>();
-        foreach (var pair in shots)
-            if (pair.Value >= 0f && now >= pair.Value) due.Add(pair.Key);
-        foreach (string name in due)
+        if (nextAt >= 0f && now >= nextAt)
         {
-            Capture("/tmp/juicy-bot-" + name + ".png");
-            shots[name] = -1f;
+            nextAt = -1f;
+            Next(director);
         }
-
-        bool done = (crackTime >= 0f && now >= crackTime + AfterCrack) || now >= MaxGameSeconds;
-        if (!done) return;
-        File.WriteAllText(Report, Describe(director, now));
-        SessionState.SetBool("JuicyBot", false);
-        Time.timeScale = 1f;
-        if (File.Exists(AutoPlayFlag)) File.Delete(AutoPlayFlag);
-        EditorApplication.isPlaying = false;
+        if (current >= plan.Count || now >= MaxGameSeconds) Finish(director, now);
     }
 
     static void Hook(AlleyChuteDirector director)
     {
         hooked = true;
-        Time.timeScale = Speed;
-        // Sloppier than the default so the run sees busts and rollbacks.
-        director.AutoMistakes = 0.3f;
-        director.Vault.StageLocked += stage =>
+        // AlleyBatch.BotFilm skips the numbers and only films.
+        bool filmOnly = SessionState.GetBool("JuicyBotFilmOnly", false);
+        // AlleyBatch.BotVault plays only the vault: the level after the last.
+        bool vaultOnly = SessionState.GetBool("JuicyBotVaultOnly", false);
+        if (!filmOnly)
         {
-            lockTimes.Add(Time.time);
-            events.Add(Time.time.ToString("0") + "s stage " + stage + " locked");
-            if (stage == 0) Shoot("bolt", Time.time, 0.35f);
-        };
-        HookHack(director);
-        director.Vault.RolledBack += (stage, fraction) => events.Add(Time.time.ToString("0") + "s rollback on stage " + stage + " to " + fraction.ToString("0.00"));
-        director.Vault.Cracked += heist =>
-        {
-            crackTime = Time.time;
-            events.Add(Time.time.ToString("0") + "s vault " + heist + " cracked");
-            Shoot("crack", Time.time, 2.4f);
-        };
-        director.Rules.LegAdvanced += (leg, chutes) => events.Add(Time.time.ToString("0") + "s leg " + leg);
+            // Every level, then the vault (Boss) with every clue found clear.
+            for (int level = vaultOnly ? director.Place.Count : 0; level <= director.Place.Count; level++)
+            {
+                for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Careful });
+                for (int i = 0; i < Attempts; i++) plan.Add(new Run { Level = level, Mistakes = Sloppy });
+            }
+        }
+        plan.Add(new Run { Level = FilmLevel, Mistakes = FilmWinMistakes, Film = true, WantWin = true });
+        plan.Add(new Run { Level = FilmLevel, Mistakes = FilmFailMistakes, Film = true, WantWin = false });
+        director.AttemptEnded += level => Ended(director, level);
+        FilmEveryFrame(true);
+        Next(director);
     }
 
-    // Until the clue trip plays in the alley nothing finds clues, so the bot
-    // finds one per leg at a random tier; that fills a cycle every 3 legs (4
-    // from heist 2) and the hack runs. Each hack's steps and payout are logged.
-    static void HookHack(AlleyChuteDirector director)
+    static void Next(AlleyChuteDirector director)
     {
-        director.Rules.LegAdvanced += (leg, chutes) =>
+        current++;
+        if (current >= plan.Count) return;
+        Run run = plan[current];
+        director.AutoMistakes = run.Mistakes;
+        if (run.Film)
         {
-            Clue? clue = director.Clues.ClueFound(Random.Range(0, ClueRules.MaxTier + 1));
-            if (clue.HasValue)
-                events.Add(Time.time.ToString("0") + "s clue " + director.Clues.Count + "/" + director.Clues.CluesNeeded + " symbol " + clue.Value.Symbol + " tier " + clue.Value.Tier);
-        };
-        var hack = Object.FindAnyObjectByType<AlleyHack>();
-        if (hack == null) return;
-        hack.Finished += (reward, clues) =>
+            Time.timeScale = 1f;
+            Time.captureFramerate = FilmFps;
+            ring = 0;
+            afterEnd = -1;
+            string folder = FilmFolder(run, false);
+            if (Directory.Exists(folder)) Directory.Delete(folder, true);
+            Directory.CreateDirectory(folder);
+        }
+        else
         {
-            hacks++;
-            if (reward.Perfect) perfectHacks++;
-            hackSteps += reward.Steps;
-            events.Add(Time.time.ToString("0") + "s hack steps " + reward.Steps + "/" + clues + (reward.Perfect ? " perfect" : " failed") +
-                " paid cash " + reward.Cash.ToString("0") + " bribes " + reward.Bribes + " drills " + reward.Drills + " vault turns " + reward.Turns);
-        };
+            Time.captureFramerate = 0;
+            Time.timeScale = Speed;
+        }
+        attemptStart = Time.time;
+        if (run.Level < director.Place.Count) director.Play(run.Level);
+        else
+        {
+            var clear = new int[director.Place.Count];
+            for (int i = 0; i < clear.Length; i++) clear[i] = ClueRules.MaxTier;
+            director.CaseFile.Restore(clear);
+            director.PlayBoss();
+        }
     }
 
-    // Queues a capture once per name, delay seconds from now.
-    static void Shoot(string name, float now, float delay)
+    static void Ended(AlleyChuteDirector director, LevelRules level)
     {
-        if (shots.ContainsKey(name)) return;
-        shots[name] = now + delay;
+        Run run = plan[current];
+        bool won = level.State == LevelState.Won;
+        string line = LevelLabel(run.Level, level.Spec) + " mistakes " + run.Mistakes.ToString("0.00") + " " + (won ? "won" : "failed") +
+            " sorted " + level.Sorted + "/" + level.Target + " lost " + level.Lost + " cash " + level.GoldCaught +
+            (won ? " misses to spare " + level.MissesLeft : " short " + level.ShortBy) +
+            " length " + level.Elapsed.ToString("0") + "s balance " + director.Rules.Balance.ToString("0") +
+            (director.IsBoss && director.Finale != null ? " finale " + director.Finale.Step + "/" + director.Finale.Count + " alarms left " + director.Finale.AlarmsLeft +
+                (level.FailedAtFinale ? " TRIPPED" : "") : "");
+        if (!run.Film)
+        {
+            lines.Add(line);
+            nextAt = Time.time + 0.5f;
+            return;
+        }
+        filmLines.Add("film try " + (filmTry + 1) + ": " + line);
+        // Keep filming the result panel, then keep the film only if the
+        // attempt came out the way this film needs.
+        afterEnd = 0;
+        if (won == run.WantWin || filmTry + 1 >= FilmTries)
+        {
+            filmTry = 0;
+            return;
+        }
+        filmTry++;
+        afterEnd = -1;
+        current--;
+        nextAt = Time.time + 0.5f;
+    }
+
+    static string FilmFolder(Run run, bool done) =>
+        FilmRoot + "/" + (run.WantWin ? "won" : "failed") + (done ? "" : "-ring");
+
+    // During a film attempt, every frame goes into a ring of the last
+    // FilmSeconds, and the result panel is filmed after the end. Then the ring
+    // is written out in order.
+    static void Film()
+    {
+        if (!EditorApplication.isPlaying || current < 0 || current >= plan.Count || !plan[current].Film) return;
+        Run run = plan[current];
+        var director = Object.FindAnyObjectByType<AlleyChuteDirector>();
+        if (director == null) return;
+        if (!homeTaken && run.WantWin && Time.time - attemptStart >= 20f)
+        {
+            homeTaken = true;
+            AlleySceneBuilder.Capture(HomeStill);
+        }
+        if (!bannerTaken && run.WantWin && Time.time - attemptStart >= 1f)
+        {
+            bannerTaken = true;
+            AlleySceneBuilder.Capture(BannerStill);
+        }
+        // The first dynamite and the first gold well into view, for a still of each.
+        foreach (AlleyItem item in director.Live)
+        {
+            if (item.State != AlleyItem.Phase.Falling || item.transform.position.y > 3f) continue;
+            if (!dynamiteTaken && item.Kind == ItemKind.Bomb)
+            {
+                dynamiteTaken = true;
+                AlleySceneBuilder.Capture(DynamiteStill);
+            }
+            else if (!goldTaken && item.Kind == ItemKind.Gold)
+            {
+                goldTaken = true;
+                AlleySceneBuilder.Capture(GoldStill);
+            }
+        }
+        if (afterEnd < 0 && !director.Level.Playing) return;
+        int slots = Mathf.RoundToInt(FilmSeconds * FilmFps);
+        string ringFolder = FilmFolder(run, false);
+        if (afterEnd < 0)
+        {
+            Shoot(ringFolder + "/ring_" + (ring % slots).ToString("0000") + ".jpg");
+            ring++;
+            return;
+        }
+        Shoot(ringFolder + "/after_" + afterEnd.ToString("0000") + ".jpg");
+        afterEnd++;
+        if (afterEnd < Mathf.RoundToInt(ResultSeconds * FilmFps)) return;
+
+        string folder = FilmFolder(run, true);
+        if (Directory.Exists(folder)) Directory.Delete(folder, true);
+        Directory.CreateDirectory(folder);
+        int frame = 0;
+        int first = Mathf.Max(0, ring - slots);
+        for (int i = first; i < ring; i++)
+            File.Move(ringFolder + "/ring_" + (i % slots).ToString("0000") + ".jpg", folder + "/frame_" + (frame++).ToString("0000") + ".jpg");
+        for (int i = 0; i < afterEnd; i++)
+            File.Move(ringFolder + "/after_" + i.ToString("0000") + ".jpg", folder + "/frame_" + (frame++).ToString("0000") + ".jpg");
+        Directory.Delete(ringFolder, true);
+        filmLines.Add("film " + Path.GetFileName(folder) + ": " + frame + " frames");
+        afterEnd = -1;
+        nextAt = Time.time + 0.1f;
+    }
+
+    // A 540x960 frame of the main camera, which carries the level display.
+    static void Shoot(string path)
+    {
+        Camera camera = Camera.main;
+        if (camera == null) return;
+        if (filmBuffer == null) filmBuffer = new RenderTexture(540, 960, 24);
+        if (filmImage == null) filmImage = new Texture2D(540, 960, TextureFormat.RGB24, false);
+        RenderTexture previous = camera.targetTexture;
+        camera.targetTexture = filmBuffer;
+        camera.Render();
+        RenderTexture.active = filmBuffer;
+        filmImage.ReadPixels(new Rect(0f, 0f, 540f, 960f), 0, 0);
+        filmImage.Apply();
+        camera.targetTexture = previous;
+        RenderTexture.active = null;
+        File.WriteAllBytes(path, filmImage.EncodeToJPG(88));
+    }
+
+    // Runs Film once per game frame, after the frame's gameplay, so a film
+    // gets exactly one picture per frame.
+    static void FilmEveryFrame(bool on)
+    {
+        PlayerLoopSystem loop = PlayerLoop.GetCurrentPlayerLoop();
+        for (int i = 0; i < loop.subSystemList.Length; i++)
+        {
+            if (loop.subSystemList[i].type != typeof(PostLateUpdate)) continue;
+            var systems = new List<PlayerLoopSystem>(loop.subSystemList[i].subSystemList);
+            systems.RemoveAll(system => system.type == typeof(AlleyBotRun));
+            if (on) systems.Add(new PlayerLoopSystem { type = typeof(AlleyBotRun), updateDelegate = Film });
+            loop.subSystemList[i].subSystemList = systems.ToArray();
+        }
+        PlayerLoop.SetPlayerLoop(loop);
+    }
+
+    static void Finish(AlleyChuteDirector director, float now)
+    {
+        FilmEveryFrame(false);
+        File.WriteAllText(Report, Describe(director, now));
+        SessionState.SetBool("JuicyBot", false);
+        Time.timeScale = 1f;
+        Time.captureFramerate = 0;
+        if (File.Exists(AutoPlayFlag)) File.Delete(AutoPlayFlag);
+        EditorApplication.isPlaying = false;
     }
 
     static string Describe(AlleyChuteDirector director, float now)
     {
-        var reactions = Object.FindAnyObjectByType<AlleyReactions>();
-        var door = Object.FindAnyObjectByType<AlleyVaultDoor>();
-        HeistSortRules rules = director.Rules;
-        VaultProgress vault = director.Vault;
         var log = new System.Text.StringBuilder();
-        log.AppendLine("game seconds " + now.ToString("0") + " at " + Speed + "x");
-        log.AppendLine("spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses);
-        log.AppendLine("balance " + rules.Balance.ToString("0") + " leg " + rules.Leg + " vat fills " + rules.VatFills);
-        log.AppendLine("vault heist " + vault.Heist + " stage " + vault.Stage + " turns " + vault.Turns + "/" + vault.TurnsForStage);
-        log.AppendLine("vault 1 " + (crackTime >= 0f ? "cracked at " + crackTime.ToString("0") + "s (" + (crackTime / 60f).ToString("0.0") + " min)" : "not cracked"));
-        var gaps = new System.Text.StringBuilder();
-        float last = 0f;
-        foreach (float t in lockTimes) { gaps.Append((t - last).ToString("0") + "s "); last = t; }
-        log.AppendLine("seconds per stage " + gaps);
-        if (door != null) log.AppendLine("door pops " + door.Pops + " rollbacks " + door.Rollbacks + " cracks " + door.Cracks);
-        log.AppendLine("hacks " + hacks + " perfect " + perfectHacks + " failed " + (hacks - perfectHacks) + " steps " + hackSteps +
-            " clues waiting " + director.Clues.Count + "/" + director.Clues.CluesNeeded);
-        log.AppendLine("gear dynamite " + rules.GearCount(GearKind.Dynamite) + " (max held " + maxDynamite + ", cap " + rules.DynamiteCap + ")" +
-            " drill " + rules.GearCount(GearKind.Drill) + " bribe " + rules.GearCount(GearKind.Bribe));
-        if (reactions != null) log.AppendLine("raccoon pushHeavy " + reactions.PushHeavies + " busts " + reactions.Busts);
-        log.AppendLine("particles " + ParticleCount());
-        log.AppendLine("raccoon " + RaccoonFeet());
-        log.AppendLine("saved " + PlayerPrefs.GetString("Juicy.HeistSave.Bot", "none"));
+        log.AppendLine("place " + director.Place.PlaceName + ", " + director.Place.Count + " levels:");
+        foreach (LevelSpec spec in AllLevels(director.Place))
+            log.AppendLine("  " + spec.Name + ": target " + spec.Target + " with " + spec.Misses + " misses to spare, " + spec.Dynamite + " dynamite, " +
+                spec.Cash + " cash, seed " + spec.Seed + ", a drop every " + spec.DropEvery.ToString("0.00") + "s, falling " +
+                spec.FallSpeed.ToString("0.0") + " m/s, up to " + spec.MaxChutes + " chutes" + (spec.Hint.Length > 0 ? ", hint \"" + spec.Hint + "\"" : ""));
+        log.AppendLine("numbers at " + Speed + "x, " + Attempts + " attempts per bot per level; film of level " + (FilmLevel + 1) + " at 1x, " + FilmFps + " fps");
+        log.AppendLine("game seconds " + now.ToString("0") + "; spawned " + director.Spawned + " flicks " + director.Flicks + " misses " + director.Misses);
+        log.AppendLine();
+        log.AppendLine("summary:");
+        var all = AllLevels(director.Place);
+        for (int i = 0; i < all.Count; i++)
+            foreach (float mistakes in new[] { Careful, Sloppy })
+                log.AppendLine("  " + Summary(LevelLabel(i, all[i]), mistakes));
+        log.AppendLine();
+        log.AppendLine("attempts:");
+        foreach (string line in lines) log.AppendLine("  " + line);
+        log.AppendLine();
+        log.AppendLine("film:");
+        foreach (string line in filmLines) log.AppendLine("  " + line);
+        log.AppendLine("home still " + (homeTaken ? HomeStill : "not taken"));
+        log.AppendLine("banner still " + (bannerTaken ? BannerStill : "not taken") + "; dynamite still " + (dynamiteTaken ? DynamiteStill : "not taken") +
+            "; cash still " + (goldTaken ? GoldStill : "not taken"));
+        log.AppendLine("finished all " + plan.Count + " planned attempts " + (current >= plan.Count));
         log.AppendLine("errors " + errors + (errors > 0 ? " first: " + firstError : ""));
-        log.AppendLine("events:");
-        foreach (string e in events) log.AppendLine("  " + e);
         return log.ToString();
     }
 
-    // Lowest point of the posed raccoon mesh and the torch's tilt from upright.
-    static string RaccoonFeet()
+    // Numbered, so two levels with the same name never share a summary line.
+    static string LevelLabel(int index, LevelSpec spec) => (index + 1) + ". " + spec.Name;
+
+    // The place's levels, then its vault.
+    static List<LevelSpec> AllLevels(PlaceData place)
     {
-        GameObject raccoon = GameObject.Find("Raccoon_Mascot");
-        if (raccoon == null) return "missing";
-        var skin = raccoon.GetComponentInChildren<SkinnedMeshRenderer>();
-        var baked = new Mesh();
-        skin.BakeMesh(baked, true);
-        float lowest = float.MaxValue, highest = float.MinValue;
-        foreach (Vector3 v in baked.vertices)
-        {
-            float y = skin.transform.TransformPoint(v).y;
-            lowest = Mathf.Min(lowest, y);
-            highest = Mathf.Max(highest, y);
-        }
-        Object.DestroyImmediate(baked);
-        var torch = raccoon.GetComponentInChildren<TorchGrip>();
-        string tilt = torch != null ? Vector3.Angle(torch.transform.up, Vector3.up).ToString("0") : "none";
-        var animator = raccoon.GetComponentInChildren<Animator>();
-        string bones = "";
-        if (animator != null && animator.isHuman)
-        {
-            Transform l = animator.GetBoneTransform(HumanBodyBones.LeftFoot), r = animator.GetBoneTransform(HumanBodyBones.RightFoot);
-            if (l != null && r != null) bones = " feet bones " + ((l.position + r.position) * 0.5f).ToString("F2");
-            var stand = raccoon.GetComponent<StandOnSpot>();
-            if (stand != null) bones += " ankle " + stand.AnkleHeight.ToString("0.00");
-        }
-        string cover = "";
-        GameObject manhole = GameObject.Find("Manhole");
-        if (manhole != null)
-        {
-            var mr = manhole.GetComponentsInChildren<MeshRenderer>();
-            Bounds mb = mr[0].bounds;
-            foreach (var m in mr) mb.Encapsulate(m.bounds);
-            cover = " cover top " + mb.max.y.ToString("0.00") + " centre " + mb.center.ToString("F2");
-        }
-        return "human " + (animator != null && animator.isHuman) + bones + cover + " feet y " + lowest.ToString("0.00") + " top y " + highest.ToString("0.00") + " torch tilt " + tilt;
+        var all = new List<LevelSpec>(place.Levels);
+        all.Add(place.Boss);
+        return all;
     }
 
-    static string ParticleCount()
+    static string Summary(string level, float mistakes)
     {
-        var parts = new System.Text.StringBuilder();
-        foreach (var system in Object.FindObjectsByType<ParticleSystem>(FindObjectsSortMode.None))
-            parts.Append(system.name + "=" + system.particleCount + (system.isPlaying ? "" : " (stopped)") + " ");
-        return parts.Length > 0 ? parts.ToString() : "none";
-    }
-
-    static void Capture(string path)
-    {
-        Camera camera = Camera.main;
-        if (camera == null) return;
-        RenderTexture buffer = new RenderTexture(1080, 1920, 24);
-        RenderTexture previous = camera.targetTexture;
-        camera.targetTexture = buffer;
-        camera.Render();
-        RenderTexture.active = buffer;
-        Texture2D image = new Texture2D(buffer.width, buffer.height, TextureFormat.RGB24, false);
-        image.ReadPixels(new Rect(0f, 0f, buffer.width, buffer.height), 0, 0);
-        image.Apply();
-        camera.targetTexture = previous;
-        RenderTexture.active = null;
-        File.WriteAllBytes(path, image.EncodeToPNG());
-        Object.DestroyImmediate(image);
-        buffer.Release();
+        string key = level + " mistakes " + mistakes.ToString("0.00") + " ";
+        int wins = 0, total = 0;
+        foreach (string line in lines)
+        {
+            if (!line.StartsWith(key)) continue;
+            total++;
+            if (line.Contains(" won ")) wins++;
+        }
+        return key + "won " + wins + "/" + total;
     }
 }

@@ -676,18 +676,20 @@ public static partial class AlleySceneBuilder
         Debug.Log("Heist gameplay wired");
     }
 
-    // The chute director, its item pool, the two color chests, the reactions
-    // and the vault timer readout. Static loot placeholders give way to the
+    // The chute director, its item pool, the two color chests, the reactions,
+    // the vault timer readout and the level's goal display. Static loot placeholders give way to the
     // falling items; the crates stay as dressing.
     static void BuildGameplay()
     {
         Transform framing = GameObject.Find("Alley_Framing").transform;
         Reparent("Heavy_Crates", framing);
-        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign", "Vault_Keypad" };
+        string[] retired = { "Loot_Items", "Hazards", "Grid_Manager", "Sorting_Lanes", "Spawner_Bottom_Ground", "Loot_Chests", "Heist_Chute_Director", "Vault_Door", "Plinko", "Word_Sign", "Vault_Keypad", "Level_Hud", "City_Map", "Clue_Reveal", "Game_Title", "Game_Settings" };
         for (int i = 0; i < retired.Length; i++)
         {
-            GameObject old = GameObject.Find(retired[i]);
-            if (old != null) Object.DestroyImmediate(old);
+            // Includes inactive objects, such as the word sign a level turns off.
+            foreach (GameObject root in SceneManager.GetActiveScene().GetRootGameObjects())
+                foreach (Transform old in root.GetComponentsInChildren<Transform>(true))
+                    if (old != null && old.name == retired[i]) Object.DestroyImmediate(old.gameObject);
         }
 
         Transform grid = GameObject.Find("03_Gameplay_Grid_System").transform;
@@ -705,7 +707,7 @@ public static partial class AlleySceneBuilder
         AlleyBin right = BuildBin(chests, 1, new Vector3(0.72f, 0f, -0.3f), 180f - 28f, diamond);
 
         AlleyChuteDirector director = directorObject.AddComponent<AlleyChuteDirector>();
-        director.Configure(drops, new[] { left, right }, template);
+        director.Configure(drops, new[] { left, right }, template, CityPlace());
 
         GameObject raccoon = GameObject.Find("Raccoon_Mascot");
         var heatLights = new List<LightAnimator>();
@@ -715,10 +717,15 @@ public static partial class AlleySceneBuilder
         AlleyReactions reactions = directorObject.AddComponent<AlleyReactions>();
         reactions.Configure(director, raccoon != null ? raccoon.GetComponentInChildren<Animator>() : null, heatLights.ToArray(), rig);
         AlleyVaultDoor vaultDoor = BuildVaultDoor(grid, director, rig);
-        BuildWordSign(grid, director);
+        // No letters fall in a level, so the word sign waits, built but off,
+        // for the levels that bring letters back (T-026).
+        BuildWordSign(grid, director).gameObject.SetActive(false);
         BuildHack(grid, director, vaultDoor, rig);
 
         BuildScoreReadout(director);
+        BuildLevelHud(director);
+        BuildClueReveal(director);
+        BuildMap(director);
         template.gameObject.SetActive(false);
         EditorUtility.SetDirty(directorObject);
 
@@ -896,10 +903,13 @@ public static partial class AlleySceneBuilder
     static void BuildScoreReadout(AlleyChuteDirector director)
     {
         GameObject timer = GameObject.Find("Vault_Score_Counter");
-        Bounds b;
-        if (!TryBounds(timer, out b)) return;
+        if (timer == null) return;
+        // The old readout goes first: measured with it, the timer's bounds
+        // grew forward and every rebuild nudged the readout (T-049).
         Transform old = timer.transform.Find("Score_Readout");
         if (old != null) Object.DestroyImmediate(old.gameObject);
+        Bounds b;
+        if (!TryBounds(timer, out b)) return;
 
         Vector2 size = new Vector2(b.size.x * 0.5f, b.size.y * 0.36f);
         GameObject root = new GameObject("Score_Readout");

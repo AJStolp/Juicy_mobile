@@ -28,9 +28,6 @@ public class HeistSortRules
     const double WordBonus = 2500d;
     const double HeistWordBonus = 25000d;
 
-    public float BombChance = 0.15f;
-    public float LetterChance = 0.10f;
-    public float GoldChance = 0.10f;
     public int CorrectsToFillVat = 3;
     public float PenaltyStep = 0.1f;
     public int VatFillsPerLeg = 4;
@@ -49,6 +46,11 @@ public class HeistSortRules
     public event Action<char, string, int> LetterBanked;
     public event Action<string, double> WordCompleted;
     public event Action<GearKind, int> GearChanged;
+    public event Action<ItemKind> Missed;
+    public event Action<ItemKind> Trashed;
+
+    // Off while a level is played (LevelRules): mistakes then raise no heat.
+    public bool HeatOn = true;
 
     readonly int[] craft = new int[Sides];
     readonly float[] vat = new float[Sides];
@@ -100,36 +102,19 @@ public class HeistSortRules
         return 0;
     }
 
-    // -1 left, +1 right, 2 up (trash), 0 nothing.
+    // -1 left, +1 right, 2 up (trash), Down (into the chest below), 0 nothing.
+    // Down needs a clearly vertical swipe; a steep diagonal swipe down goes to
+    // the side it leans toward, so a curving thumb never lands in the wrong chest.
+    public const int Down = 3;
+
     public static int FlickDirection(Vector2 start, Vector2 end, float minDistance)
     {
         Vector2 delta = end - start;
         if (delta.magnitude < minDistance) return 0;
-        if (Mathf.Abs(delta.y) > Mathf.Abs(delta.x))
-            return delta.y > 0f ? 2 : 0;
+        float across = Mathf.Abs(delta.x);
+        if (delta.y > across) return 2;
+        if (-delta.y > 2f * across) return Down;
         return delta.x < 0f ? -1 : 1;
-    }
-
-    public ItemKind KindForRoll(float roll)
-    {
-        if (roll < BombChance) return ItemKind.Bomb;
-        if (roll < BombChance + LetterChance) return ItemKind.Letter;
-        if (roll < BombChance + LetterChance + GoldChance) return ItemKind.Gold;
-        return ItemKind.Gem;
-    }
-
-    // Letters are drawn from the word in progress, preferring ones still missing.
-    public char PickLetter(float roll)
-    {
-        string word = ActiveWord;
-        int missing = word.Length - LettersFilled;
-        int pick = Mathf.Clamp((int)(roll * Mathf.Max(1, missing)), 0, Mathf.Max(0, missing - 1));
-        for (int i = 0; i < word.Length; i++)
-        {
-            if (filled[i]) continue;
-            if (pick-- == 0) return word[i];
-        }
-        return word[0];
     }
 
     public void Tick(float dt)
@@ -185,6 +170,7 @@ public class HeistSortRules
         if (kind == ItemKind.Gold) GrantGold();
         else if (kind == ItemKind.Gem) Fault(ErrorHeat);
         else if (kind == ItemKind.Bomb) AddGear(GearKind.Dynamite, 1);
+        Trashed?.Invoke(kind);
     }
 
     public int GearCap(GearKind kind) => kind == GearKind.Dynamite ? DynamiteCap : int.MaxValue;
@@ -206,6 +192,15 @@ public class HeistSortRules
         CashWon?.Invoke(amount, Balance);
     }
 
+    // Pays for something with cash earned in play. False, and nothing
+    // spent, when there is not enough.
+    public bool Spend(double amount)
+    {
+        if (amount <= 0d || Balance < amount) return false;
+        Balance -= amount;
+        return true;
+    }
+
     public void Restore(double balance, int[] savedGear)
     {
         Balance = balance;
@@ -217,6 +212,27 @@ public class HeistSortRules
     public void Miss(ItemKind kind)
     {
         if (kind == ItemKind.Gem) Fault(ErrorHeat);
+        Missed?.Invoke(kind);
+    }
+
+    // A fresh attempt at a level: heat, streak, vats, legs and the word start
+    // over. Cash and gear are kept, since a fail costs only the attempt.
+    public void StartAttempt()
+    {
+        for (int i = 0; i < Sides; i++)
+        {
+            craft[i] = 0;
+            vat[i] = 0f;
+        }
+        Leg = 1;
+        VatFills = 0;
+        legBestTier = 0;
+        LastLegBestTier = 0;
+        cooling = false;
+        BreakStreak();
+        SetHeat(0f);
+        wordIndex = 0;
+        LoadWord();
     }
 
     void FillVat(int side)
@@ -274,6 +290,7 @@ public class HeistSortRules
 
     void Fault(float amount)
     {
+        if (!HeatOn) return;
         cooling = false;
         SetHeat(Mathf.Min(MaxHeat, Heat + amount));
         if (Heat >= MaxHeat) Bust();

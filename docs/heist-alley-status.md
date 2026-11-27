@@ -1,6 +1,6 @@
 # Heist alley: where the game stands
 
-Last updated 2026-11-12, branch `heist-vault-progress`. The design behind it is in `game-design.md`.
+Last updated 2026-11-26, branch `T-028-level-goals`. The design behind it is in `game-design.md`.
 
 The game is now one 3D scene, `Assets/Scenes/DiegeticAlley.unity`. The old 2D SampleScene is retired; commit `fa26667e` holds everything it used, including art that was never committed before that.
 
@@ -10,31 +10,46 @@ A diegetic color sort game with casino style juice: everything happens inside th
 
 ## How it plays today
 
-- Items fall from invisible chutes above the street. One chute opens at the start and one more each leg, up to four. A leg is four vat fills.
-- Swipe left or right to send an item into that side's deposit chest (crimson left, indigo right). Swipe up to trash it.
-- Items are gems (one diamond model, tinted per color), dynamite bombs, cash stacks and letter tiles that spell HEIST, VAULT and ESCAPE.
-- A correct sort pays 50 times the streak tier (x2 at 5, x3 at 10, x5 at 15). Gold pays 150. HEIST pays 25,000; the other words pay 2,500.
-- Mistakes raise heat. At 100 heat you are busted: the stage loot is lost, the screen clears, and you stay on the same leg.
-- The balance rolls up on the vault timer's screen.
-- **The vault is the objective.** Every vat fill turns the vault door one step. It has seven stages. The door is the graffiti building's own steel door: the first four stages slide its three locking bars and then its handle, the fifth turns its gear lock, and its wheel turns a quarter with every stage. A full stage locks for good. A bust takes back half of the stage in play, never a locked one. Locking the wheel cracks the vault, and the next heist starts on a fresh door. Turns per stage are 9, 16, then 28 from the third vault on (`VaultProgress.TurnsByHeist`). Bot runs crack vault 1 in about 12 game minutes.
-- **The clue hack replaces the old bonus round** (`game-design.md`). Its rules are in `ClueRules.cs`. When a clue cycle is full (3 clues, 4 from the second heist), the camera holds on a keypad beside the vault door and the player taps the clues in the order they were found. Each correct tap climbs one step of the reward ladder, and the first wrong tap ends it (`AlleyHack.cs`). The clue trip that finds clues between legs is still on its branch (T-020), so until it merges nothing collects clues in play.
-- **Swiping dynamite away pockets it** as gear, up to 3. Gear is only counted so far; nothing spends it yet.
-- **Progress saves** between sittings: vault stage and turns, cash and gear (`HeistSave`, in PlayerPrefs). Legs, chutes, heat and streak start fresh each sitting.
+- **The alley plays the city's six levels** (T-028, goal C picked by Anthony 2026-11-26). Each level's numbers live in `Assets/Levels/City.asset` (`PlaceData`, a list of `LevelSpec`, T-032): the target, the misses to spare, the seed, how many dynamite and cash stacks, how often something drops, how fast it falls, the most chutes that open, and a one line hint. A level drops enough gems for its target plus its misses, mixed with its dynamite and cash stacks, all in the same order (the first 4 drops are always gems, so the hint is read first) on every attempt (`LevelRules`, seeded), so a fail is the player's doing.
+- **The game opens on the title** (T-040, `AlleyTitle`): the working name JUICY HEIST and SORT THE LOOT. CRACK THE VAULT. over the alley, with the map music. A tap goes on to the map. The name stays a working title until the store listing picks one (T-046).
+- **Settings** (T-040, `AlleySettings`) open from the SETTINGS button on the map: sound on or off, music on or off (kept between sittings) and the privacy policy, whose row appears once its public address is set (`AlleySettings.PrivacyUrl`, a constant in code). The policy is drafted in `docs/privacy-policy.md`, with the developer name, contact email and address left for Anthony.
+- **Then the city's map** (T-035, `AlleyMap`): the six levels in order and the vault after them. Only the next unbeaten level and the beaten ones are open; tap one to play it. A won level shows TAP TO CONTINUE, then its clue to scratch off, then goes back to the map with the next one open; a failed one offers KEEP GOING, TRY AGAIN or MAP (lives, below). Progress through the city saves with everything else (`PlaceProgress`, `HeistSave.placeBeaten`). The map is a crime board: photos pinned to cork and joined by red string, a beaten level's photo showing its clue (Anthony's pick, T-048). SETTINGS sits along its bottom. The vault stop says BEAT ALL 6 FIRST until every level is beaten. Auto play (the bot) skips the title, the map and the clue reveal.
+- **Lives, cash and the fail offer** (T-038). The player has 5 lives (`Lives`); one comes back every 30 minutes, and the map's top bar shows lives, the time to the next and the cash. A failed level offers KEEP GOING: 5 more gems to finish with, for $5,000 of cash earned in play, doubling each time in the same attempt (`LevelRules.Continue`, `AlleyChuteDirector.KeepGoing`). The life goes at the fail (so closing the game cannot dodge it) and KEEP GOING gives it back; TRY AGAIN or MAP leaves it gone. Gems cleared from the street at the fail fall again after KEEP GOING. With none left a level will not start, and the map offers REFILL ALL for $15,000 or WAIT. A tripped vault alarm cannot be kept going. Lives save with everything else. Prices are a starting call to tune; selling KEEP GOING for real money is Anthony's call (T-038).
+- **Each city level holds one clue** (T-036, `CaseFile`): a symbol from the vault keypad's set, fixed per level by the place's `ClueSeed`, with no repeats in the city. Winning finds it, as clearly as the attempt's best streak tier (`LevelRules.BestTier`); a replay can make it clearer, never less clear. After the win the player rubs a silver scratch card off (`AlleyClueReveal`): once 65% is gone the rest falls away and the clue shows, with grime that will not scratch off over part of a less clear one, a clarity line (BARELY READABLE, SMUDGED, CLEAR, CRYSTAL CLEAR) and, below the clearest, A LONGER STREAK SHOWS IT CLEARER. TAP TO PIN IT TO THE BOARD goes back to the map, where the level's photo now shows the symbol in its color. The clues save with everything else (`HeistSave.placeClueTiers`). The boss will use them (T-037).
+- **New things arrive one level at a time** (T-033): City 1 and 2 are gems only, City 2 faster. City 3 brings dynamite, City 4 cash stacks, and City 5 and 6 mix both at higher speed with fewer misses to spare. A level that brings something new names it in its hint.
+- Items fall from invisible chutes above the street. One chute opens at the start and one more each leg, up to four. A leg is four vat fills. The open chutes take turns (`ChuteTurns`, seeded): each drops once before any drops again, and none drops twice in a row, so drops spread evenly (T-051).
+- Swipe left or right to send an item into that side's deposit chest (crimson left, indigo right), down to drop it into the chest it is falling over (a clearly vertical swipe that starts on the gem; a steep diagonal goes to the side it leans toward), or up to flick it away.
+  - **Gems** go in their color's chest. A wrong chest, a flick up or a miss loses the gem.
+  - **Dynamite** must be flicked up, which pockets it. Letting it land, or sorting it into a chest, costs one miss, and it goes off with a shake.
+  - **Cash stacks** count as two gems in either chest, or flicked up. A missed cash stack costs nothing. (In code the item is still `ItemKind.Gold`.)
+- **Misses left** is how many more gems can be lost with the target still in reach. A lost gem or a dynamite mistake takes one; a cash stack gives two back. The level is won at the target and failed the moment misses left would go below zero. Cash still to fall is a bonus and is not counted ahead, so the counter on screen is what decides a fail.
+- The top of the screen shows gems sorted against the target and the misses left, which turn red at 3. Each attempt opens on the level's name and hint for 3 seconds. When an attempt ends, a panel shows LEVEL WON with the misses to spare, or TOO MANY MISSES with how many gems short. Tap anywhere: after a win it goes back to the map, after a fail it tries again. A fail costs only the attempt: cash and gear carry over.
+- A correct sort pays 50 times the streak tier (x2 at 5, x3 at 10, x5 at 15). A cash stack pays 150. The balance rolls up on the vault timer's screen.
+- **The vault is the city's boss** (T-037). It opens on the board once all six levels are beaten. It is a longer, faster sort (`PlaceData.Boss`) during which every correct sort turns the vault door, which locks its first six stages across the target (`VaultProgress`, fresh each attempt). At the target the win is held (`LevelRules.HoldsWin`) and the camera goes to the keypad beside the door (`AlleyHack`): its six keys hold the city's clues, shuffled, and the case file runs along the top, where CLEAR and CRYSTAL CLEAR clues stay readable, a SMUDGED one shows for 3 seconds and a BARELY READABLE one never shows (`ClueRules.FinaleSecondsFor`). A clue never found (a level beaten before clues existed) still belongs to the code and shows blank; replaying its level finds it. Tap the clues in board order (`VaultFinale`): a wrong tap sounds the alarm and the same clue is still wanted; the third trips it and fails the attempt (ALARM TRIPPED, with how many clues went in). Entering all of them turns the wheel and swings the door open: VAULT CRACKED, $25,000, and the board marks the vault cracked.
+- **Held back:** letter tiles do not fall; heat is off, so there are no busts; the HEIST word sign is hidden. Their code is still in place.
+- **Progress saves** between sittings: cash, gear, lives, the city's levels beaten, the clues found and whether the vault is cracked (`HeistSave`, in PlayerPrefs).
 
 ## How the alley reacts
 
 - The raccoon stands centered on the manhole in his torch idle. He does a light push on sorts and a heavy push on vat fills, vault stages and the crack.
-- The vault door creeps forward as turns come in and grinds back slowly on a bust. The bars and handle slide as their stage fills, the gear lock turns, and the wheel turns a quarter per stage. The HEIST word sign sits centered above the door frame, clear of the door. Locks, rollbacks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
+- The vault door creeps forward as turns come in and grinds back slowly to a fresh door when the next attempt starts, its bars sliding home. The bars and handle slide as their stage fills, the gear lock turns, and the wheel turns a quarter per stage. The HEIST word sign sits centered above the door frame, clear of the door. Locks and the crack push the camera toward the door. Cracking it spins the wheel and swings the door open on a flood of light.
 - The chests glow brighter as their vat fills, flash orange on a mistake, and snap their lid open as an item drops in.
 - The police strobe and the vault alarms run faster and brighter with heat. A bust shakes the camera. `AlleyCameraRig` owns every camera move: shakes, pushes, and holds on a pose.
 - Lamps flicker, the wall lamps hum, steam rises from the manhole, and clouds drift across the moon.
+
+## How it sounds
+
+- Every sound and all the music is synthesized from code by `ArtSource/Audio/build_audio.py` (plain Python, no packages), so it is original and owes no license or credit. Run `python3 ArtSource/Audio/build_audio.py` from the repo root to rebuild it into `Assets/Resources/Audio/`; the output is the same on every run. `AudioImport` sets the import for phones: the music streams compressed, the short effects load decoded.
+- Effects (`JuicyAudioHooks`): a coin ding on every correct sort, rising in pitch through a streak; a sour thud on a wrong chest; a soft whoosh for a gem lost; a rising whoosh and fizz when dynamite is flicked away, and a boom when it lands or goes in a chest; cha-ching for cash; a little climb when a streak reaches its next cash tier; a fanfare on a win and falling notes on a fail; a scrape as the clue card is rubbed, sparkles when the clue shows and a thumbtack when it is pinned; a click on the map; a clank for each vault stage, the keypad's beep and buzz, and a boom and bright chord when the vault cracks (the vault's own fanfare, so a cracked vault plays nothing else).
+- Music (`JuicyMusic`): a slow heist jazz loop on the map, a driving loop in levels and a tense pulse in the vault, crossfading as play moves between them.
+- Sound and music can each be switched off (`AudioPrefs`, kept between sittings); the switches go in settings (T-040).
 
 ## Where things live
 
 | What | Where |
 |---|---|
 | Sort rules, no presentation | `Assets/Scripts/Core/HeistSortRules.cs` |
-| Vault stages, clue hack rules, gear, the save | `VaultProgress.cs`, `ClueRules.cs`, `GearKind.cs`, `HeistSave.cs` in `Assets/Scripts/Core/` |
+| Vault stages, clue clarity, the vault finale, gear, the save | `VaultProgress.cs`, `ClueRules.cs`, `VaultFinale.cs`, `GearKind.cs`, `HeistSave.cs` in `Assets/Scripts/Core/` |
 | Rule tests | `Assets/Editor/Tests/` |
 | Vault door, camera moves | `AlleyVaultDoor.cs`, `AlleyCameraRig.cs` in `Assets/Scripts/Alley/` |
 | Falling items, swipes, chests, reactions, score | `Assets/Scripts/Alley/` |
@@ -55,7 +70,7 @@ The editor watches for flag files, so tools can drive it without a second Unity 
 | `/tmp/juicy-run-tests` | runs the EditMode tests | `/tmp/juicy-tests.txt` |
 | `/tmp/juicy-alley-layout` | rebuilds the layout, lighting and gameplay, then renders | `/tmp/juicy-alley-light.png` |
 | `/tmp/juicy-alley-wire` | rewires gameplay only | `/tmp/juicy-alley-wire.txt` |
-| `/tmp/juicy-alley-bot-run` | plays on auto play at 4x until vault 1 cracks, with a sloppy bot so busts happen; logs stage times, rollbacks and legs | `/tmp/juicy-bot.txt`, `/tmp/juicy-bot-progress.txt`, `/tmp/juicy-bot-{street,bolt,crack}.png` |
+| `/tmp/juicy-alley-bot-run` | plays every level of the city on auto play, paced like a person (a 0.45 s reaction and 0.3 s between swipes): 8 attempts per stop (six levels and the vault) by a careful bot (10% mistakes) and 8 by a sloppy one (30%), all at 4x, logging each result, gems short or misses to spare, cash caught, and length; then films one won and one failed attempt of City 4 at 1x (`AlleyBatch.BotVault` runs only the vault's attempts and the films), with stills of its opening banner, the first dynamite and the first cash | `/tmp/juicy-bot.txt`, `/tmp/juicy-bot-progress.txt`, `/tmp/juicy-level-film/{won,failed}/frame_*.jpg`, `/tmp/juicy-level-{home,banner,dynamite,cash}.png` |
 | `/tmp/juicy-save-check` | plants a save, enters Play, checks it came back, restores the real save | `/tmp/juicy-save-check.txt` |
 
 Unity only picks up script changes when its window has focus and refreshes (Cmd+R). With the screen locked, Play mode in the open editor barely advances, so a bot run stalls.
@@ -69,7 +84,9 @@ U=/Applications/Unity/Hub/Editor/6000.3.10f1/Unity.app/Contents/MacOS/Unity
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Wire -quit
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Previews -quit   # street with the vault door, door close up
 $U -batchmode -projectPath . -executeMethod AlleyBatch.Bot              # no -quit; exits when the report is written
+$U -batchmode -projectPath . -executeMethod AlleyBatch.BotFilm          # no -quit; only the two films, no numbers
 $U -batchmode -projectPath . -executeMethod AlleyBatch.SaveCheck        # no -quit
+$U -batchmode -projectPath . -executeMethod AlleyBatch.MapCheck         # no -quit; plays the title, settings, the map, a clue reveal, the vault, the fail offer and running out of lives through, stills in /tmp/juicy-map-*.png and /tmp/juicy-reveal-*.png, result in /tmp/juicy-map.txt
 $U -batchmode -projectPath . -runTests -testPlatform EditMode -testResults <file>
 ```
 
@@ -83,4 +100,4 @@ Running tools in the open editor: write an `AlleyBatch` method name to `/tmp/jui
 
 ## TLDR
 
-The alley is the game: items fall from chutes that open one per leg, swipes sort them into two deposit chests, and every vat fill turns the vault door, which is the progress meter. Bars slide, the gear and wheel turn, busts grind the current stage back, and cracking it opens the door. When a clue cycle is full, the player taps the clues in order on a keypad beside the vault for a reward ladder. Dynamite swiped away is pocketed, and progress saves between sittings. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).
+The game opens on the city's map, a crime board of six levels and the vault where each win pins a scratched off clue, and plays the city's six levels, each a set of numbers in one asset, with dynamite to flick up arriving in City 3 and cash stacks worth two in City 4. Everything falls in the same order every attempt, and sorting the target into the two deposit chests wins it. Beat all six and the vault opens: a faster sort that turns the door, then a keypad finale where the city's clues, shown as clearly as you found them, are the code. Run out of misses and the panel says how many gems short, with a tap to try again that costs only the attempt. Every correct sort pays cash on the streak. Letters and heat are held back. The launch plan is on the board under T-030. Rules live in a tested core, and the alley art is built from code in `ArtSource/Alley/`. Checks run through flag files with Unity open or `AlleyBatch` with it closed. Open work is on the board (project `juicysortgame`).

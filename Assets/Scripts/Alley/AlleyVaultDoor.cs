@@ -4,9 +4,10 @@ using UnityEngine;
 // The vault door is the progress meter, on the graffiti facade's own door.
 // Stages 0 to 3 slide its three locking bars and then its handle, stage 4
 // turns the gear lock, and the wheel turns a little with every stage.
-// Progress creeps forward quickly and grinds back slowly on a bust. Cracking
-// the vault spins the wheel and swings the door open on a flood of light,
-// then the door closes on a fresh vault.
+// It turns during the vault boss (VaultProgress): progress creeps forward
+// quickly, and grinds back slowly to a fresh door when a new attempt starts.
+// Cracking the vault spins the wheel and swings the door open on a flood of
+// light, then the door closes again.
 public class AlleyVaultDoor : MonoBehaviour
 {
     const int Bolts = 4;
@@ -40,10 +41,6 @@ public class AlleyVaultDoor : MonoBehaviour
     bool cracking;
     bool rested;
 
-    public bool Cracking => cracking;
-    public int Pops { get; private set; }
-    public int Rollbacks { get; private set; }
-    public int Cracks { get; private set; }
     public Vector3 Focus => wheel != null ? wheel.position : transform.position;
 
     public void Configure(AlleyChuteDirector chute, Transform swingDoor, Transform[] slidingBolts, Vector3[] slide, Transform gearLock,
@@ -66,9 +63,15 @@ public class AlleyVaultDoor : MonoBehaviour
         Unbind();
         vault = progress;
         vault.StageLocked += OnStageLocked;
-        vault.RolledBack += OnRolledBack;
         vault.Cracked += OnCracked;
+        vault.Restarted += OnRestarted;
         Snap();
+    }
+
+    // A fresh door: the bolts slide home and the rest grinds back in Update.
+    void OnRestarted()
+    {
+        for (int i = 0; i < Bolts; i++) popped[i] = false;
     }
 
     void Awake()
@@ -144,8 +147,8 @@ public class AlleyVaultDoor : MonoBehaviour
     {
         if (vault == null) return;
         vault.StageLocked -= OnStageLocked;
-        vault.RolledBack -= OnRolledBack;
         vault.Cracked -= OnCracked;
+        vault.Restarted -= OnRestarted;
         vault = null;
     }
 
@@ -167,12 +170,9 @@ public class AlleyVaultDoor : MonoBehaviour
     {
         if (cracking) return;
         shown[stage] = 1f;
-        JuicyAudioHooks.Vault();
-        if (stage < Bolts)
-        {
-            popped[stage] = true;
-            Pops++;
-        }
+        // The last stage cracks the vault, which has its own sound.
+        if (!vault.IsCracked) JuicyAudioHooks.Vault();
+        if (stage < Bolts) popped[stage] = true;
         if (cameraRig != null)
         {
             cameraRig.Push(Focus, 0.18f, 1.1f);
@@ -180,24 +180,15 @@ public class AlleyVaultDoor : MonoBehaviour
         }
     }
 
-    void OnRolledBack(int stage, float fraction)
-    {
-        Rollbacks++;
-        if (cameraRig != null) cameraRig.Push(Focus, 0.12f, 1.4f);
-    }
-
-    void OnCracked(int heist)
-    {
-        Cracks++;
-        StartCoroutine(Crack());
-    }
+    void OnCracked() => StartCoroutine(Crack());
 
     IEnumerator Crack()
     {
         cracking = true;
         for (int s = 0; s < shown.Length; s++) shown[s] = 1f;
         if (cameraRig != null) cameraRig.Push(Focus, 0.22f, 5f);
-        JuicyAudioHooks.Vault();
+        // A boom as the wheel spins, then a bright chord as the door swings.
+        JuicyAudioHooks.Crack();
 
         for (float t = 0f; t < 1f; t += Time.deltaTime)
         {
@@ -205,7 +196,6 @@ public class AlleyVaultDoor : MonoBehaviour
             Pose();
             yield return null;
         }
-        JuicyAudioHooks.Chime();
         if (cameraRig != null) cameraRig.Shake(0.4f);
         for (float t = 0f; t < 1.2f; t += Time.deltaTime)
         {

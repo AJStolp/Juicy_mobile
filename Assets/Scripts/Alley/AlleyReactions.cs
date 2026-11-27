@@ -2,14 +2,14 @@ using UnityEngine;
 
 // The alley answers the game: the raccoon pushes on sorts, vat fills and vault
 // stages, the police strobe and vault alarms run hotter with heat, the camera
-// shakes on mistakes and busts, and the existing sound hooks play.
+// shakes on mistakes and blasts, and every sort, miss, flick and blast has its
+// sound (JuicyAudioHooks).
 public class AlleyReactions : MonoBehaviour
 {
     [SerializeField] AlleyChuteDirector director;
     [SerializeField] Animator raccoon;
     [SerializeField] LightAnimator[] heatLights;
     [SerializeField] AlleyCameraRig cameraRig;
-    [SerializeField] double bigWinChime = 150d;
 
     HeistSortRules rules;
     VaultProgress vault;
@@ -33,10 +33,13 @@ public class AlleyReactions : MonoBehaviour
     {
         rules = director.Rules;
         rules.Sorted += OnSorted;
+        rules.Missed += OnMissed;
+        rules.Trashed += OnTrashed;
+        rules.StreakChanged += OnStreak;
         rules.VatFilled += OnVatFilled;
         rules.LegAdvanced += OnLegAdvanced;
-        rules.CashWon += OnCashWon;
         rules.Busted += OnBusted;
+        director.AttemptStarted += OnAttemptStarted;
         vault = director.Vault;
         vault.StageLocked += OnStageLocked;
         vault.Cracked += OnCracked;
@@ -45,10 +48,13 @@ public class AlleyReactions : MonoBehaviour
     void OnDestroy()
     {
         if (rules == null) return;
+        director.AttemptStarted -= OnAttemptStarted;
         rules.Sorted -= OnSorted;
+        rules.Missed -= OnMissed;
+        rules.Trashed -= OnTrashed;
+        rules.StreakChanged -= OnStreak;
         rules.VatFilled -= OnVatFilled;
         rules.LegAdvanced -= OnLegAdvanced;
-        rules.CashWon -= OnCashWon;
         rules.Busted -= OnBusted;
         if (vault == null) return;
         vault.StageLocked -= OnStageLocked;
@@ -60,9 +66,12 @@ public class AlleyReactions : MonoBehaviour
         if (result == SortResult.Wrong || result == SortResult.Bomb)
         {
             Shake(result == SortResult.Bomb ? 0.35f : 0.15f);
+            if (result == SortResult.Bomb) JuicyAudioHooks.Boom();
+            else JuicyAudioHooks.Wrong();
             return;
         }
-        JuicyAudioHooks.Sort();
+        if (result == SortResult.Correct) JuicyAudioHooks.Sort(rules.Streak);
+        else if (result == SortResult.Gold) JuicyAudioHooks.Cash();
         if (result != SortResult.Correct && result != SortResult.Gold) return;
         // Only start a light push from idle, so pushes do not stack up.
         if (raccoon == null || !raccoon.GetCurrentAnimatorStateInfo(0).IsName("Torch_Idle") || raccoon.IsInTransition(0)) return;
@@ -70,21 +79,44 @@ public class AlleyReactions : MonoBehaviour
         PushLights++;
     }
 
-    void OnVatFilled(int side)
+    // Dynamite left to land goes off in the street; a gem just drops.
+    void OnMissed(ItemKind kind)
     {
-        JuicyAudioHooks.Vault();
-        PushHeavy();
+        if (kind == ItemKind.Bomb)
+        {
+            Shake(0.35f);
+            JuicyAudioHooks.Boom();
+        }
+        else if (kind == ItemKind.Gem) JuicyAudioHooks.Miss();
     }
+
+    // Flicked up: dynamite is pocketed, cash is caught, a gem is thrown away.
+    void OnTrashed(ItemKind kind)
+    {
+        if (kind == ItemKind.Bomb) JuicyAudioHooks.Flick();
+        else if (kind == ItemKind.Gold) JuicyAudioHooks.Cash();
+        else if (kind == ItemKind.Gem) JuicyAudioHooks.Miss();
+    }
+
+    int lastTier;
+
+    // A streak reaching its next cash tier gets its own little climb.
+    void OnStreak(int streak, int tier)
+    {
+        if (tier > lastTier) JuicyAudioHooks.StreakUp();
+        lastTier = tier;
+    }
+
+    void OnVatFilled(int side) => PushHeavy();
+
+    // Levels have their own driving loop; the vault a tenser one.
+    void OnAttemptStarted(LevelRules level) => JuicyMusic.Play(director.IsBoss ? JuicyMusic.Track.Vault : JuicyMusic.Track.Level);
 
     // A stage locking on the vault is a big moment; so is cracking it. He
     // has no celebration clip yet, so both get the heavy push.
     void OnStageLocked(int stage) => PushHeavy();
 
-    void OnCracked(int heist)
-    {
-        PushHeavy();
-        JuicyAudioHooks.Getaway();
-    }
+    void OnCracked() => PushHeavy();
 
     void PushHeavy()
     {
@@ -99,11 +131,6 @@ public class AlleyReactions : MonoBehaviour
     void OnLegAdvanced(int leg, int chutes)
     {
         Legs++;
-    }
-
-    void OnCashWon(double amount, double balance)
-    {
-        if (amount >= bigWinChime) JuicyAudioHooks.Chime();
     }
 
     void OnBusted()
